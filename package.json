@@ -1,7 +1,7 @@
 {
   "name": "stockvoz",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@react-native-voice/voice": "^3.2.4",
