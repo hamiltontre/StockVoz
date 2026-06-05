@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import Voice, {
-  SpeechResultsEvent,
-  SpeechErrorEvent,
-} from '@react-native-voice/voice';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
 import type { Producto } from '../types';
+
+// @react-native-voice/voice requires a native build (not Expo Go).
+// We import it lazily so the rest of the app works in Expo Go.
+let Voice: typeof import('@react-native-voice/voice').default | null = null;
+try {
+  Voice = require('@react-native-voice/voice').default;
+} catch {
+  // Native module not available (Expo Go) — voice will be disabled
+}
 
 export type EstadoVoz = 'inactivo' | 'escuchando' | 'procesando' | 'error';
 
@@ -23,19 +28,23 @@ export function useVoz() {
   const disponible = useRef(false);
 
   useEffect(() => {
+    if (!Voice) return;
+
     Voice.isAvailable().then((avail) => {
       disponible.current = !!avail;
+    }).catch(() => {
+      disponible.current = false;
     });
 
     Voice.onSpeechResults = handleResultados;
     Voice.onSpeechError = handleError;
 
     return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
+      Voice?.destroy().then(() => Voice?.removeAllListeners()).catch(() => {});
     };
   }, []);
 
-  const handleResultados = useCallback(async (e: SpeechResultsEvent) => {
+  const handleResultados = useCallback(async (e: { value?: string[] }) => {
     const transcripcion = e.value?.[0] ?? '';
     if (!transcripcion) return;
 
@@ -76,15 +85,15 @@ export function useVoz() {
     setEstado('inactivo');
   }, []);
 
-  const handleError = useCallback((e: SpeechErrorEvent) => {
+  const handleError = useCallback((e: { error?: { message?: string } }) => {
     const msg = e.error?.message ?? 'Error desconocido de reconocimiento';
     setErrorMensaje(msg);
     setEstado('error');
   }, []);
 
   const iniciarEscucha = useCallback(async () => {
-    if (!disponible.current) {
-      setErrorMensaje('Reconocimiento de voz no disponible en este dispositivo');
+    if (!Voice || !disponible.current) {
+      setErrorMensaje('Reconocimiento de voz no disponible. Se requiere build de desarrollo.');
       setEstado('error');
       return;
     }
@@ -101,7 +110,7 @@ export function useVoz() {
 
   const detenerEscucha = useCallback(async () => {
     try {
-      await Voice.stop();
+      await Voice?.stop();
     } catch {
       // Si falla al detener, simplemente reseteamos
     }

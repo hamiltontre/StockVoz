@@ -10,9 +10,9 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useInventario } from '../../src/hooks/useInventario';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';

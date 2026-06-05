@@ -14,7 +14,6 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
 }
 
 async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
-  await db.execAsync('PRAGMA user_version');
   const versionRow = await db.getFirstAsync<{ user_version: number }>(
     'PRAGMA user_version'
   );
@@ -22,12 +21,14 @@ async function initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
 
   if (currentVersion >= SCHEMA_VERSION) return;
 
-  await db.withTransactionAsync(async () => {
-    for (const sql of SCHEMA_SQL) {
-      await db.execAsync(sql);
-    }
-    await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-  });
+  // DDL statements run sequentially — no wrapping transaction needed
+  // because CREATE TABLE IF NOT EXISTS is idempotent and SQLite
+  // auto-commits DDL. Using withTransactionAsync here causes
+  // "transaction within a transaction" on expo-sqlite v14+.
+  for (const sql of SCHEMA_SQL) {
+    await db.execAsync(sql);
+  }
+  await db.runAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
 
 // Cierra la conexión — útil en tests, no se llama en producción normal
