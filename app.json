@@ -20,6 +20,18 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-router",
+      "expo-status-bar",
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "StockVoz necesita el micrófono para registrar ventas por voz",
+          "speechRecognitionPermission": "StockVoz necesita reconocimiento de voz para registrar ventas sin tocar la pantalla"
+        }
+      ]
+    ]
   }
 }
