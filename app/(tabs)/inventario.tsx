@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useInventario } from '../../src/hooks/useInventario';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
 import type { Producto, CrearProductoDTO } from '../../src/types';
@@ -39,6 +40,7 @@ const VACIO_DTO: CrearProductoDTO = {
 };
 
 export default function PantallaInventario() {
+  const router = useRouter();
   const { productos, cargando, error, cargar, buscar, crear, actualizar, eliminar } = useInventario();
   const [busqueda, setBusqueda] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
@@ -186,12 +188,20 @@ export default function PantallaInventario() {
                 <View style={[s.stockBadge, item.stock <= item.stock_minimo && s.stockBadgeBajo]}>
                   <Text style={s.stockTexto}>{item.stock} uds</Text>
                 </View>
-                <TouchableOpacity
-                  onPress={() => confirmarEliminar(item)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="trash-outline" size={18} color={C.rojo} />
-                </TouchableOpacity>
+                <View style={s.tarjetaAcciones}>
+                  <TouchableOpacity
+                    onPress={() => router.push(`/palabras-clave/${item.id}`)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="mic-outline" size={18} color={C.acento} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => confirmarEliminar(item)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={C.rojo} />
+                  </TouchableOpacity>
+                </View>
               </View>
             </TouchableOpacity>
           )}
@@ -355,6 +365,7 @@ const s = StyleSheet.create({
   tarjetaNombre: { fontSize: 15, fontWeight: '600', color: C.texto },
   tarjetaPrecio: { fontSize: 14, color: C.acento, marginTop: 2 },
   tarjetaDerecha: { alignItems: 'flex-end', gap: 8 },
+  tarjetaAcciones: { flexDirection: 'row', gap: 14 },
   stockBadge: { backgroundColor: '#1a3a1a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   stockBadgeBajo: { backgroundColor: '#3a1a00' },
   stockTexto: { color: C.texto, fontSize: 12, fontWeight: '600' },
