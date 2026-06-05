@@ -1,15 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { NativeModules } from 'react-native';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
 import type { Producto } from '../types';
-
-// @react-native-voice/voice requires a native build (not Expo Go).
-// We import it lazily so the rest of the app works in Expo Go.
-let Voice: typeof import('@react-native-voice/voice').default | null = null;
-try {
-  Voice = require('@react-native-voice/voice').default;
-} catch {
-  // Native module not available (Expo Go) — voice will be disabled
-}
 
 export type EstadoVoz = 'inactivo' | 'escuchando' | 'procesando' | 'error';
 
@@ -19,46 +11,42 @@ export interface ResultadoVoz {
   cantidad: number;
 }
 
-const LOCALE_ES = 'es-419'; // español latinoamericano
+const LOCALE_ES = 'es-419';
+
+// RCTVoice es null en Expo Go (no hay native build).
+// Verificamos ANTES de hacer require para evitar que el constructor
+// del módulo haga llamadas async a un bridge nulo.
+const VOICE_NATIVO_DISPONIBLE = !!NativeModules.RCTVoice;
+
+function getVoice() {
+  if (!VOICE_NATIVO_DISPONIBLE) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('@react-native-voice/voice').default;
+  } catch {
+    return null;
+  }
+}
+
+const numerosEscritos: Record<string, number> = {
+  uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
+  seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+};
 
 export function useVoz() {
   const [estado, setEstado] = useState<EstadoVoz>('inactivo');
   const [resultado, setResultado] = useState<ResultadoVoz | null>(null);
   const [errorMensaje, setErrorMensaje] = useState<string | null>(null);
-  const disponible = useRef(false);
-
-  useEffect(() => {
-    if (!Voice) return;
-
-    Voice.isAvailable().then((avail) => {
-      disponible.current = !!avail;
-    }).catch(() => {
-      disponible.current = false;
-    });
-
-    Voice.onSpeechResults = handleResultados;
-    Voice.onSpeechError = handleError;
-
-    return () => {
-      Voice?.destroy().then(() => Voice?.removeAllListeners()).catch(() => {});
-    };
-  }, []);
+  const disponible = useRef(VOICE_NATIVO_DISPONIBLE);
 
   const handleResultados = useCallback(async (e: { value?: string[] }) => {
     const transcripcion = e.value?.[0] ?? '';
     if (!transcripcion) return;
 
     setEstado('procesando');
-
     const palabras = transcripcion.toLowerCase().split(/\s+/);
     let productosEncontrados: Producto[] = [];
     let cantidad = 1;
-
-    // Detectar cantidad: "dos cervezas", "3 aceites", etc.
-    const numerosEscritos: Record<string, number> = {
-      uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
-      seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
-    };
 
     for (const p of palabras) {
       const num = parseInt(p, 10);
@@ -66,7 +54,6 @@ export function useVoz() {
       if (numerosEscritos[p]) { cantidad = numerosEscritos[p]; break; }
     }
 
-    // Buscar productos por palabras clave y luego por nombre
     for (const palabra of palabras) {
       if (palabra.length < 3) continue;
       const byKeyword = await ProductoRepository.buscarPorPalabraClave(palabra);
@@ -86,14 +73,28 @@ export function useVoz() {
   }, []);
 
   const handleError = useCallback((e: { error?: { message?: string } }) => {
-    const msg = e.error?.message ?? 'Error desconocido de reconocimiento';
-    setErrorMensaje(msg);
+    setErrorMensaje(e.error?.message ?? 'Error de reconocimiento');
     setEstado('error');
   }, []);
 
+  useEffect(() => {
+    const Voice = getVoice();
+    if (!Voice) return;
+
+    Voice.onSpeechResults = handleResultados;
+    Voice.onSpeechError = handleError;
+
+    return () => {
+      Voice.destroy()
+        .then(() => Voice.removeAllListeners())
+        .catch(() => {});
+    };
+  }, [handleResultados, handleError]);
+
   const iniciarEscucha = useCallback(async () => {
-    if (!Voice || !disponible.current) {
-      setErrorMensaje('Reconocimiento de voz no disponible. Se requiere build de desarrollo.');
+    const Voice = getVoice();
+    if (!Voice) {
+      setErrorMensaje('Voz no disponible en Expo Go. Se necesita development build.');
       setEstado('error');
       return;
     }
@@ -109,11 +110,9 @@ export function useVoz() {
   }, []);
 
   const detenerEscucha = useCallback(async () => {
-    try {
-      await Voice?.stop();
-    } catch {
-      // Si falla al detener, simplemente reseteamos
-    }
+    const Voice = getVoice();
+    if (!Voice) { setEstado('inactivo'); return; }
+    try { await Voice.stop(); } catch { /* noop */ }
     setEstado('inactivo');
   }, []);
 
