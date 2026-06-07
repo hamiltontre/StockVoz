@@ -14,7 +14,8 @@ import { useVentas } from '../../src/hooks/useVentas';
 import { useVoz } from '../../src/hooks/useVoz';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
-import type { ItemCarrito, MetodoPago, Producto } from '../../src/types';
+import { ModalRecibo } from '../../src/components/ModalRecibo';
+import type { ItemCarrito, MetodoPago, Producto, VentaConDetalle } from '../../src/types';
 
 const C = {
   fondo: '#0f172a',
@@ -32,6 +33,8 @@ export default function PantallaVentas() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
   const [procesando, setProcesando] = useState(false);
+  const [reciboVisible, setReciboVisible] = useState(false);
+  const [ventaRecibo, setVentaRecibo] = useState<VentaConDetalle | null>(null);
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
   const { estado: estadoVoz, resultado: resultadoVoz, iniciarEscucha, detenerEscucha, limpiar } = useVoz();
@@ -100,9 +103,10 @@ export default function PantallaVentas() {
     setProcesando(true);
     const result = await registrarVenta(carrito, metodoPago);
     setProcesando(false);
-    if (result.ok) {
+    if (result.ok && result.venta) {
       setCarrito([]);
-      Alert.alert('✓ Venta registrada', `Total: ${centavosACordobas(result.venta!.total)}`);
+      setVentaRecibo(result.venta);
+      setReciboVisible(true);
     } else {
       Alert.alert('Error', result.error ?? 'No se pudo registrar la venta');
     }
@@ -230,6 +234,12 @@ export default function PantallaVentas() {
           </TouchableOpacity>
         </View>
       )}
+
+      <ModalRecibo
+        venta={ventaRecibo}
+        visible={reciboVisible}
+        onCerrar={() => { setReciboVisible(false); setVentaRecibo(null); }}
+      />
     </SafeAreaView>
   );
 }
