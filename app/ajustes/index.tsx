@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { getDb } from '../../src/database/db';
 import { useSesion } from '../../src/context/SesionContext';
 import { useConectividad } from '../../src/hooks/useConectividad';
+import { useSync } from '../../src/hooks/useSync';
 import { UsuarioRepository } from '../../src/database/repositories/UsuarioRepository';
 import type { Negocio } from '../../src/types';
 
@@ -28,6 +29,7 @@ export default function PantallaAjustes() {
   const router = useRouter();
   const { sesion, esAdmin, cerrarSesion } = useSesion();
   const { conectado } = useConectividad();
+  const { estado: estadoSync, pendientes, sincronizar } = useSync();
   const [negocio, setNegocio] = useState<Negocio | null>(null);
   const [nombreEditable, setNombreEditable] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -195,6 +197,40 @@ export default function PantallaAjustes() {
               <Text style={[s.filaLabel, { flex: 1 }]}>Gestionar usuarios</Text>
               <Ionicons name="chevron-forward" size={16} color={C.subtexto} />
             </TouchableOpacity>
+          </Seccion>
+        )}
+
+        {/* Sincronización — solo admin */}
+        {esAdmin && (
+          <Seccion titulo="SINCRONIZACIÓN">
+            <View style={s.fila}>
+              <View style={s.filaIcono}>
+                <Ionicons
+                  name={pendientes > 0 ? 'cloud-upload-outline' : 'cloud-done-outline'}
+                  size={20}
+                  color={pendientes > 0 ? C.amarillo : C.verde}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.filaLabel}>
+                  {pendientes === 0
+                    ? 'Todo sincronizado'
+                    : `${pendientes} cambio${pendientes !== 1 ? 's' : ''} pendiente${pendientes !== 1 ? 's' : ''}`}
+                </Text>
+                <Text style={s.filaSub}>
+                  {estadoSync === 'sincronizando' ? 'Sincronizando...'
+                    : conectado ? 'Listo para sincronizar'
+                    : 'Esperando conexión'}
+                </Text>
+              </View>
+              {estadoSync === 'sincronizando' ? (
+                <ActivityIndicator size="small" color={C.acento} />
+              ) : pendientes > 0 && conectado && (
+                <TouchableOpacity onPress={sincronizar}>
+                  <Ionicons name="sync" size={20} color={C.acento} />
+                </TouchableOpacity>
+              )}
+            </View>
           </Seccion>
         )}
 

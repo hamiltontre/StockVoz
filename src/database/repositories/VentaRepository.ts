@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { SyncRepository } from './SyncRepository';
 import type {
   Venta,
   DetalleVenta,
@@ -103,6 +104,13 @@ export const VentaRepository = {
         );
         ventaCreada = { ...rowToVenta(ventaRow!), items: detalles };
       });
+
+      // Encolar para sincronización (fire-and-forget, no bloquea la venta)
+      if (ventaCreada) {
+        SyncRepository.encolar('ventas', 'INSERT', ventaCreada).catch(() => {
+          // Si falla encolar, la venta ya está guardada localmente — no es crítico
+        });
+      }
 
       return { ok: true, data: ventaCreada! };
     } catch (e) {
