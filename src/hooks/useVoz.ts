@@ -94,8 +94,10 @@ export function useVoz() {
   const iniciarEscucha = useCallback(async () => {
     const Voice = getVoice();
     if (!Voice) {
-      setErrorMensaje('Voz no disponible en Expo Go. Se necesita development build.');
+      setErrorMensaje('Voz no disponible. Se necesita development build.');
       setEstado('error');
+      // Auto-limpiar el error después de 3 segundos
+      setTimeout(() => setEstado('inactivo'), 3000);
       return;
     }
     try {
@@ -103,9 +105,16 @@ export function useVoz() {
       setErrorMensaje(null);
       setEstado('escuchando');
       await Voice.start(LOCALE_ES);
+
+      // Timeout de seguridad: si en 8s no hay resultado, detener
+      setTimeout(async () => {
+        try { await Voice.stop(); } catch { /* noop */ }
+        setEstado((prev) => prev === 'escuchando' ? 'inactivo' : prev);
+      }, 8000);
     } catch (e) {
       setErrorMensaje(String(e));
       setEstado('error');
+      setTimeout(() => setEstado('inactivo'), 3000);
     }
   }, []);
 

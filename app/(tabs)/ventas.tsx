@@ -142,10 +142,18 @@ export default function PantallaVentas() {
       {/* Indicador de voz */}
       {estadoVoz !== 'inactivo' && (
         <View style={s.bannerVoz}>
-          <ActivityIndicator size="small" color={C.acento} />
-          <Text style={s.bannerVozTexto}>
-            {estadoVoz === 'escuchando' ? 'Escuchando...' : 'Procesando...'}
+          {estadoVoz === 'error'
+            ? <Ionicons name="alert-circle-outline" size={18} color={C.rojo} />
+            : <ActivityIndicator size="small" color={C.acento} />
+          }
+          <Text style={[s.bannerVozTexto, estadoVoz === 'error' && { color: C.rojo }]}>
+            {estadoVoz === 'escuchando' ? 'Escuchando... habla ahora'
+              : estadoVoz === 'procesando' ? 'Analizando respuesta...'
+              : 'Voz no disponible en Expo Go'}
           </Text>
+          <TouchableOpacity onPress={() => { detenerEscucha(); limpiar(); }} style={s.bannerBtnStop}>
+            <Ionicons name="close-circle" size={20} color={C.subtexto} />
+          </TouchableOpacity>
         </View>
       )}
 
@@ -259,7 +267,8 @@ const s = StyleSheet.create({
     padding: 10,
     gap: 10,
   },
-  bannerVozTexto: { color: C.acento, fontSize: 14, fontWeight: '600' },
+  bannerVozTexto: { color: C.acento, fontSize: 14, fontWeight: '600', flex: 1 },
+  bannerBtnStop: { padding: 2 },
   lista: { paddingHorizontal: 20, paddingBottom: 8, flexGrow: 1 },
   vacio: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 8 },
   vacioTexto: { fontSize: 16, color: C.subtexto, fontWeight: '600' },
