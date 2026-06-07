@@ -1,5 +1,7 @@
+import { View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { IndicadorConectividad } from '../../src/components/IndicadorConectividad';
 
 const COLORES = {
   fondo: '#0f172a',
@@ -10,48 +12,51 @@ const COLORES = {
 
 export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: COLORES.tarjeta,
-          borderTopColor: '#334155',
-          borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
-        },
-        tabBarActiveTintColor: COLORES.activo,
-        tabBarInactiveTintColor: COLORES.inactivo,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-      }}
-    >
-      <Tabs.Screen
-        name="ventas"
-        options={{
-          title: 'Ventas',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart-outline" size={size} color={color} />
-          ),
+    <View style={{ flex: 1, backgroundColor: COLORES.fondo }}>
+      <IndicadorConectividad />
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: COLORES.tarjeta,
+            borderTopColor: '#334155',
+            borderTopWidth: 1,
+            height: 60,
+            paddingBottom: 8,
+          },
+          tabBarActiveTintColor: COLORES.activo,
+          tabBarInactiveTintColor: COLORES.inactivo,
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         }}
-      />
-      <Tabs.Screen
-        name="inventario"
-        options={{
-          title: 'Inventario',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cube-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="reportes"
-        options={{
-          title: 'Reportes',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="bar-chart-outline" size={size} color={color} />
-          ),
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="ventas"
+          options={{
+            title: 'Ventas',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="cart-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="inventario"
+          options={{
+            title: 'Inventario',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="cube-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="reportes"
+          options={{
+            title: 'Reportes',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="bar-chart-outline" size={size} color={color} />
+            ),
+          }}
+        />
+      </Tabs>
+    </View>
   );
 }

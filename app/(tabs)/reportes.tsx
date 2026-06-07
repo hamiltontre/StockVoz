@@ -77,11 +77,9 @@ export default function PantallaReportes() {
           <TouchableOpacity onPress={cargarRecientes}>
             <Ionicons name="refresh-outline" size={22} color={C.acento} />
           </TouchableOpacity>
-          {esAdmin && (
-            <TouchableOpacity onPress={() => router.push('/usuarios')}>
-              <Ionicons name="people-outline" size={22} color={C.acento} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={() => router.push('/ajustes')}>
+            <Ionicons name="settings-outline" size={22} color={C.acento} />
+          </TouchableOpacity>
         </View>
       </View>
 

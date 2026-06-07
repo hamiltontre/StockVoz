@@ -1,5 +1,7 @@
 // ─── Entidades de dominio ────────────────────────────────────────────────────
 
+export type PlanNegocio = 'basico' | 'premium' | 'empresarial';
+
 export interface Negocio {
   id: number;
   nombre: string;

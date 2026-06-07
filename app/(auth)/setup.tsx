@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { UsuarioRepository } from '../../src/database/repositories/UsuarioRepository';
+import { useSesion } from '../../src/context/SesionContext';
 import { getDb } from '../../src/database/db';
 
 const C = {
@@ -21,6 +22,7 @@ const C = {
 
 export default function PantallaSetup() {
   const router = useRouter();
+  const { iniciarSesion } = useSesion();
   const [paso, setPaso] = useState<1 | 2>(1);
   const [nombreNegocio, setNombreNegocio] = useState('');
   const [nombreAdmin, setNombreAdmin] = useState('');
@@ -72,7 +74,8 @@ export default function PantallaSetup() {
         return;
       }
 
-      router.replace('/(auth)/login');
+      // Loguear directamente — no tiene sentido pedir PIN recién creado
+      iniciarSesion(result.data);
     } catch (e) {
       Alert.alert('Error', String(e));
       setGuardando(false);
