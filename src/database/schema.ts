@@ -1,5 +1,5 @@
 // Versión actual del esquema. Incrementar cuando se añadan migraciones.
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // Todas las sentencias DDL. Cada array es una transacción atómica.
 export const SCHEMA_SQL: string[] = [
@@ -83,6 +83,22 @@ export const SCHEMA_SQL: string[] = [
     creado_en        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     sincronizado_en  TEXT
   )`,
+
+  // ── Migración v2: usuarios y roles ─────────────────────────────────────────
+  // PIN se almacena como hash SHA-256 hex — nunca en texto plano
+  `CREATE TABLE IF NOT EXISTS usuarios (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    negocio_id    INTEGER NOT NULL REFERENCES negocios(id),
+    nombre        TEXT    NOT NULL,
+    rol           TEXT    NOT NULL DEFAULT 'invitado'
+                          CHECK(rol IN ('admin','invitado')),
+    pin_hash      TEXT    NOT NULL,
+    activo        INTEGER NOT NULL DEFAULT 1 CHECK(activo IN (0,1)),
+    creado_en     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    ultimo_acceso TEXT
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_usuarios_negocio ON usuarios(negocio_id)`,
 
   // Negocio por defecto para v1 (single-tenant)
   `INSERT OR IGNORE INTO negocios (id, nombre, moneda, plan)

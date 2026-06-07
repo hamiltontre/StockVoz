@@ -94,6 +94,34 @@ export interface VentaConDetalle extends Venta {
 
 // ─── Resultado estándar para operaciones de repositorio ──────────────────────
 
+// ─── Usuarios ─────────────────────────────────────────────────────────────────
+
+export type RolUsuario = 'admin' | 'invitado';
+
+export interface Usuario {
+  id: number;
+  negocio_id: number;
+  nombre: string;
+  rol: RolUsuario;
+  pin_hash: string;
+  activo: boolean;
+  creado_en: string;
+  ultimo_acceso: string | null;
+}
+
+export type CrearUsuarioDTO = {
+  nombre: string;
+  rol: RolUsuario;
+  pin: string; // 4 dígitos — se hashea antes de guardar
+};
+
+// Sesión activa en memoria (nunca persiste el PIN)
+export interface SesionActiva {
+  usuario: Omit<Usuario, 'pin_hash'>;
+}
+
+// ─── Resultado estándar para operaciones de repositorio ──────────────────────
+
 export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };

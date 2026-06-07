@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SesionProvider } from '../src/context/SesionContext';
 import { getDb } from '../src/database/db';
 
 export default function RootLayout() {
@@ -11,8 +12,10 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }} />
+      <SesionProvider>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ headerShown: false }} />
+      </SesionProvider>
     </SafeAreaProvider>
   );
 }

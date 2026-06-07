@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useVentas } from '../../src/hooks/useVentas';
-import { VentaRepository } from '../../src/database/repositories/VentaRepository';
+import { useSesion } from '../../src/context/SesionContext';
 import { centavosACordobas } from '../../src/utils/money';
 import type { Venta } from '../../src/types';
 
@@ -37,6 +38,8 @@ function formatearFecha(iso: string): string {
 }
 
 export default function PantallaReportes() {
+  const router = useRouter();
+  const { esAdmin, sesion } = useSesion();
   const { ventas, cargando, resumenHoy, cargarRecientes, anularVenta } = useVentas();
 
   useEffect(() => { cargarRecientes(); }, [cargarRecientes]);
@@ -62,10 +65,24 @@ export default function PantallaReportes() {
   return (
     <SafeAreaView style={s.pantalla}>
       <View style={s.header}>
-        <Text style={s.titulo}>Reportes</Text>
-        <TouchableOpacity onPress={cargarRecientes}>
-          <Ionicons name="refresh-outline" size={22} color={C.acento} />
-        </TouchableOpacity>
+        <View>
+          <Text style={s.titulo}>Reportes</Text>
+          {sesion && (
+            <Text style={s.sesionTexto}>
+              {sesion.usuario.nombre} · {sesion.usuario.rol === 'admin' ? 'Admin' : 'Invitado'}
+            </Text>
+          )}
+        </View>
+        <View style={s.headerAcciones}>
+          <TouchableOpacity onPress={cargarRecientes}>
+            <Ionicons name="refresh-outline" size={22} color={C.acento} />
+          </TouchableOpacity>
+          {esAdmin && (
+            <TouchableOpacity onPress={() => router.push('/usuarios')}>
+              <Ionicons name="people-outline" size={22} color={C.acento} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Resumen del día */}
@@ -144,6 +161,8 @@ const s = StyleSheet.create({
     paddingBottom: 14,
   },
   titulo: { fontSize: 24, fontWeight: '700', color: C.texto },
+  sesionTexto: { fontSize: 12, color: C.subtexto, marginTop: 2 },
+  headerAcciones: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   resumenContainer: { flexDirection: 'row', paddingHorizontal: 20, gap: 12, marginBottom: 20 },
   resumenCard: {
     flex: 1,
