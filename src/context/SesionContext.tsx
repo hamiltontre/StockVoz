@@ -16,41 +16,53 @@ const SesionContext = createContext<SesionContextValue | null>(null);
 export function SesionProvider({ children }: { children: React.ReactNode }) {
   const [sesion, setSesion] = useState<SesionActiva | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [hayAdmin, setHayAdmin] = useState<boolean | null>(null);
   const router = useRouter();
   const segments = useSegments();
 
+  // Paso 1: verificar si hay admin configurado (solo al arrancar)
   useEffect(() => {
-    // Al arrancar: verificar si hay admin configurado
-    (async () => {
-      const hayAdmin = await UsuarioRepository.hayAdminConfigurado();
-      if (!hayAdmin) {
-        // Primera vez — redirigir a setup
-        router.replace('/(auth)/setup');
-      }
-      setCargando(false);
-    })();
+    UsuarioRepository.hayAdminConfigurado()
+      .then((existe) => {
+        setHayAdmin(existe);
+        setCargando(false);
+      })
+      .catch(() => {
+        setHayAdmin(false);
+        setCargando(false);
+      });
   }, []);
 
-  // Proteger rutas: si no hay sesión y no está en auth, redirigir a login
+  // Paso 2: toda la lógica de ruteo en un solo efecto, sin race condition
   useEffect(() => {
-    if (cargando) return;
+    if (cargando || hayAdmin === null) return;
+
     const enAuth = segments[0] === '(auth)';
-    if (!sesion && !enAuth) {
-      router.replace('/(auth)/login');
+
+    if (!sesion) {
+      // Sin sesión activa → ir a setup (primera vez) o a login
+      if (!hayAdmin) {
+        router.replace('/(auth)/setup');
+      } else if (!enAuth) {
+        router.replace('/(auth)/login');
+      }
+    } else {
+      // Con sesión activa → si está en auth, llevar a la app
+      if (enAuth) {
+        router.replace('/(tabs)/ventas');
+      }
     }
-  }, [sesion, segments, cargando]);
+  }, [sesion, segments, cargando, hayAdmin]);
 
   const iniciarSesion = useCallback((usuario: Usuario) => {
-    // Guardamos el usuario sin el pin_hash — nunca vive en memoria
     const { pin_hash, ...usuarioSeguro } = usuario;
     setSesion({ usuario: usuarioSeguro });
-    router.replace('/(tabs)/ventas');
-  }, [router]);
+    setHayAdmin(true);
+  }, []);
 
   const cerrarSesion = useCallback(() => {
     setSesion(null);
-    router.replace('/(auth)/login');
-  }, [router]);
+  }, []);
 
   return (
     <SesionContext.Provider
