@@ -1,7 +1,8 @@
-import { View } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { IndicadorConectividad } from '../../src/components/IndicadorConectividad';
+import { useStockBajo } from '../../src/hooks/useStockBajo';
 
 const COLORES = {
   fondo: '#0f172a',
@@ -11,6 +12,8 @@ const COLORES = {
 };
 
 export default function TabsLayout() {
+  const { cantidad: stockBajoCantidad } = useStockBajo();
+
   return (
     <View style={{ flex: 1, backgroundColor: COLORES.fondo }}>
       <IndicadorConectividad />
@@ -43,7 +46,16 @@ export default function TabsLayout() {
           options={{
             title: 'Inventario',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="cube-outline" size={size} color={color} />
+              <View>
+                <Ionicons name="cube-outline" size={size} color={color} />
+                {stockBajoCantidad > 0 && (
+                  <View style={ts.badge}>
+                    <Text style={ts.badgeTexto}>
+                      {stockBajoCantidad > 9 ? '9+' : stockBajoCantidad}
+                    </Text>
+                  </View>
+                )}
+              </View>
             ),
           }}
         />
@@ -60,3 +72,13 @@ export default function TabsLayout() {
     </View>
   );
 }
+
+const ts = StyleSheet.create({
+  badge: {
+    position: 'absolute', top: -4, right: -6,
+    backgroundColor: '#f87171', borderRadius: 8,
+    minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeTexto: { color: '#0f172a', fontSize: 9, fontWeight: '800' },
+});

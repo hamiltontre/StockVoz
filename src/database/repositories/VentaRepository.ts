@@ -196,4 +196,106 @@ export const VentaRepository = {
       return { ok: false, error: String(e) };
     }
   },
+
+  async resumenPeriodo(dias: number): Promise<Result<{
+    total_ventas: number;
+    total_monto: number;
+    promedio_venta: number;
+    total_anuladas: number;
+  }>> {
+    try {
+      const db = await getDb();
+      const row = await db.getFirstAsync<{
+        total_ventas: number; total_monto: number;
+        promedio_venta: number; total_anuladas: number;
+      }>(
+        `SELECT
+           SUM(CASE WHEN estado='completada' THEN 1 ELSE 0 END) as total_ventas,
+           COALESCE(SUM(CASE WHEN estado='completada' THEN total ELSE 0 END),0) as total_monto,
+           COALESCE(AVG(CASE WHEN estado='completada' THEN total END),0) as promedio_venta,
+           SUM(CASE WHEN estado='anulada' THEN 1 ELSE 0 END) as total_anuladas
+         FROM ventas
+         WHERE date(creado_en) >= date('now', ?)`,
+        [`-${dias} days`]
+      );
+      return { ok: true, data: row! };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  async ventasPorDia(dias: number): Promise<Result<Array<{
+    fecha: string; total_ventas: number; total_monto: number;
+  }>>> {
+    try {
+      const db = await getDb();
+      const rows = await db.getAllAsync<{
+        fecha: string; total_ventas: number; total_monto: number;
+      }>(
+        `SELECT
+           date(creado_en) as fecha,
+           COUNT(*) as total_ventas,
+           COALESCE(SUM(total),0) as total_monto
+         FROM ventas
+         WHERE estado = 'completada'
+           AND date(creado_en) >= date('now', ?)
+         GROUP BY date(creado_en)
+         ORDER BY fecha DESC`,
+        [`-${dias} days`]
+      );
+      return { ok: true, data: rows };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  async productosMasVendidos(limite = 5): Promise<Result<Array<{
+    nombre_producto: string; total_cantidad: number; total_monto: number;
+  }>>> {
+    try {
+      const db = await getDb();
+      const rows = await db.getAllAsync<{
+        nombre_producto: string; total_cantidad: number; total_monto: number;
+      }>(
+        `SELECT
+           dv.nombre_producto,
+           SUM(dv.cantidad) as total_cantidad,
+           SUM(dv.subtotal) as total_monto
+         FROM detalle_ventas dv
+         INNER JOIN ventas v ON v.id = dv.venta_id
+         WHERE v.estado = 'completada'
+         GROUP BY dv.nombre_producto
+         ORDER BY total_cantidad DESC
+         LIMIT ?`,
+        [limite]
+      );
+      return { ok: true, data: rows };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  async ventasPorMetodoPago(): Promise<Result<Array<{
+    metodo_pago: string; total_ventas: number; total_monto: number;
+  }>>> {
+    try {
+      const db = await getDb();
+      const rows = await db.getAllAsync<{
+        metodo_pago: string; total_ventas: number; total_monto: number;
+      }>(
+        `SELECT
+           metodo_pago,
+           COUNT(*) as total_ventas,
+           COALESCE(SUM(total),0) as total_monto
+         FROM ventas
+         WHERE estado = 'completada'
+           AND date(creado_en) >= date('now', '-30 days')
+         GROUP BY metodo_pago
+         ORDER BY total_monto DESC`
+      );
+      return { ok: true, data: rows };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
 };
