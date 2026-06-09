@@ -13,12 +13,7 @@ import { useSync } from '../../src/hooks/useSync';
 import { UsuarioRepository } from '../../src/database/repositories/UsuarioRepository';
 import type { Negocio } from '../../src/types';
 
-const C = {
-  fondo: '#0f172a', tarjeta: '#1e293b', borde: '#334155',
-  texto: '#f1f5f9', subtexto: '#94a3b8', acento: '#38bdf8',
-  verde: '#4ade80', rojo: '#f87171', amarillo: '#fbbf24',
-};
-
+import { COLORES as C } from '../../src/theme/colors';
 const PLANES: Record<string, string> = {
   basico: '⭐ Plan Básico — $4/mes',
   premium: '🚀 Plan Premium — $8/mes',

@@ -14,12 +14,7 @@ import { UsuarioRepository } from '../../src/database/repositories/UsuarioReposi
 import { useSesion } from '../../src/context/SesionContext';
 import { getDb } from '../../src/database/db';
 
-const C = {
-  fondo: '#0f172a', tarjeta: '#1e293b', borde: '#334155',
-  texto: '#f1f5f9', subtexto: '#94a3b8', acento: '#38bdf8',
-  verde: '#4ade80', rojo: '#f87171',
-};
-
+import { COLORES as C } from '../../src/theme/colors';
 export default function PantallaSetup() {
   const router = useRouter();
   const { iniciarSesion } = useSesion();

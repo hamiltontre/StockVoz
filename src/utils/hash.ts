@@ -86,13 +86,25 @@ export function sha256(message: string): string {
   return H.map((n) => n.toString(16).padStart(8, '0')).join('');
 }
 
-/** Hashea un PIN de 4 dígitos con un salt fijo de la app */
-const APP_SALT = 'stockvoz-nicaragua-2026';
-
-export function hashPin(pin: string): string {
-  return sha256(APP_SALT + pin);
+/**
+ * Genera un salt aleatorio de 32 caracteres hex (128 bits).
+ * Cada usuario tiene un salt único — imposibilita rainbow-tables.
+ */
+export function generarSalt(): string {
+  const bytes = new Uint8Array(16);
+  // Math.random no es criptográficamente seguro, pero suficiente para
+  // diferenciar hashes de PINs entre usuarios. Para producción crítica
+  // migrar a expo-crypto.getRandomBytesAsync() cuando esté disponible.
+  for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function verificarPin(pin: string, hash: string): boolean {
-  return hashPin(pin) === hash;
+/** Hashea un PIN con su salt único — formato: SHA256(salt + pin) */
+export function hashPin(pin: string, salt: string): string {
+  return sha256(salt + pin);
+}
+
+/** Verifica que un PIN coincida con su hash almacenado */
+export function verificarPin(pin: string, salt: string, hash: string): boolean {
+  return hashPin(pin, salt) === hash;
 }

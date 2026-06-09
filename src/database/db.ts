@@ -125,6 +125,20 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
       `CREATE INDEX IF NOT EXISTS idx_usuarios_negocio ON usuarios(negocio_id)`,
     ],
   },
+  {
+    // Migración v3 — salt único por usuario.
+    // Reemplaza el salt global hardcodeado por uno aleatorio por usuario,
+    // imposibilitando rainbow-tables y aislando el daño si un hash se filtra.
+    // Los usuarios existentes deben re-crear su PIN — se vacía la tabla
+    // (en un proyecto en producción se haría una migración más sofisticada,
+    // pero en esta etapa de desarrollo es seguro).
+    version: 3,
+    sentencias: [
+      `ALTER TABLE usuarios ADD COLUMN salt TEXT NOT NULL DEFAULT ''`,
+      // Vaciar usuarios previos — fueron creados con salt global obsoleto
+      `DELETE FROM usuarios`,
+    ],
+  },
 ];
 
 async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {

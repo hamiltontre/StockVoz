@@ -15,19 +15,9 @@ import { useVoz } from '../../src/hooks/useVoz';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
 import { ModalRecibo } from '../../src/components/ModalRecibo';
+import { ModalBuscarProducto } from '../../src/components/ModalBuscarProducto';
+import { COLORES as C } from '../../src/theme/colors';
 import type { ItemCarrito, MetodoPago, Producto, VentaConDetalle } from '../../src/types';
-
-const C = {
-  fondo: '#0f172a',
-  tarjeta: '#1e293b',
-  borde: '#334155',
-  texto: '#f1f5f9',
-  subtexto: '#94a3b8',
-  acento: '#38bdf8',
-  verde: '#4ade80',
-  rojo: '#f87171',
-  amarillo: '#fbbf24',
-};
 
 export default function PantallaVentas() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
@@ -35,6 +25,7 @@ export default function PantallaVentas() {
   const [procesando, setProcesando] = useState(false);
   const [reciboVisible, setReciboVisible] = useState(false);
   const [ventaRecibo, setVentaRecibo] = useState<VentaConDetalle | null>(null);
+  const [buscarVisible, setBuscarVisible] = useState(false);
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
   const { estado: estadoVoz, resultado: resultadoVoz, iniciarEscucha, detenerEscucha, limpiar } = useVoz();
@@ -130,17 +121,26 @@ export default function PantallaVentas() {
             Hoy: {resumenHoy.total_ventas} ventas · {centavosACordobas(resumenHoy.total_monto)}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[s.botonMic, estadoVoz === 'escuchando' && s.botonMicActivo]}
-          onPress={toggleMicrofono}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name={estadoVoz === 'escuchando' ? 'mic' : 'mic-outline'}
-            size={28}
-            color={estadoVoz === 'escuchando' ? C.fondo : C.acento}
-          />
-        </TouchableOpacity>
+        <View style={s.headerBotones}>
+          <TouchableOpacity
+            style={s.botonBuscar}
+            onPress={() => setBuscarVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="search" size={24} color={C.acento} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.botonMic, estadoVoz === 'escuchando' && s.botonMicActivo]}
+            onPress={toggleMicrofono}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={estadoVoz === 'escuchando' ? 'mic' : 'mic-outline'}
+              size={28}
+              color={estadoVoz === 'escuchando' ? C.fondo : C.acento}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Indicador de voz */}
@@ -235,6 +235,12 @@ export default function PantallaVentas() {
         </View>
       )}
 
+      <ModalBuscarProducto
+        visible={buscarVisible}
+        onCerrar={() => setBuscarVisible(false)}
+        onSeleccionar={(p) => agregarAlCarrito(p, 1)}
+      />
+
       <ModalRecibo
         venta={ventaRecibo}
         visible={reciboVisible}
@@ -256,6 +262,17 @@ const s = StyleSheet.create({
   },
   headerTitulo: { fontSize: 24, fontWeight: '700', color: C.texto },
   headerSub: { fontSize: 13, color: C.subtexto, marginTop: 2 },
+  headerBotones: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  botonBuscar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.tarjeta,
+    borderWidth: 1,
+    borderColor: C.borde,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   botonMic: {
     width: 52,
     height: 52,

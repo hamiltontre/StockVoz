@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { SyncRepository } from './SyncRepository';
+import { bus, EVENTOS } from '../../utils/eventos';
 import type {
   Venta,
   DetalleVenta,
@@ -110,6 +111,8 @@ export const VentaRepository = {
         SyncRepository.encolar('ventas', 'INSERT', ventaCreada).catch(() => {
           // Si falla encolar, la venta ya está guardada localmente — no es crítico
         });
+        bus.emit(EVENTOS.VENTA_CREADA);
+        bus.emit(EVENTOS.STOCK_CAMBIO);
       }
 
       return { ok: true, data: ventaCreada! };
@@ -149,6 +152,7 @@ export const VentaRepository = {
         );
       });
 
+      bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: undefined };
     } catch (e) {
       return { ok: false, error: String(e) };
