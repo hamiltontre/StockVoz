@@ -1,15 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
 import { SyncRepository } from '../database/repositories/SyncRepository';
+import { ConfigRepository, CLAVES } from '../database/repositories/ConfigRepository';
 import { useConectividad } from './useConectividad';
+import { API_ENDPOINTS, TIMEOUT_MS } from '../config/api';
 
 export type EstadoSync = 'inactivo' | 'sincronizando' | 'exito' | 'error';
 
-// URL del backend Laravel — se configurará desde ajustes en el futuro
-const BACKEND_URL = 'https://api.stockvoz.app';
-
 /**
- * RF-06 — Hook que gestiona la sincronización con el backend Laravel.
- * Se ejecuta automáticamente cuando hay conexión.
+ * RF-06 — Sincronización diferida con el backend Laravel.
+ * Envía batch de hasta 200 items por request.
+ * Idempotente — el backend usa cliente_id para evitar duplicados.
  */
 export function useSync() {
   const { conectado } = useConectividad();
@@ -30,11 +30,18 @@ export function useSync() {
       return false;
     }
 
+    const token = await ConfigRepository.obtener(CLAVES.API_TOKEN);
+    if (!token) {
+      setError('No has iniciado sesión en la nube');
+      setEstado('error');
+      return false;
+    }
+
     setEstado('sincronizando');
     setError(null);
 
     try {
-      const pendientesResult = await SyncRepository.obtenerPendientes();
+      const pendientesResult = await SyncRepository.obtenerPendientes(200);
       if (!pendientesResult.ok) throw new Error(pendientesResult.error);
 
       const items = pendientesResult.data;
@@ -44,41 +51,54 @@ export function useSync() {
         return true;
       }
 
-      for (const item of items) {
-        try {
-          // POST al backend Laravel con timeout
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 10_000);
+      // Empaquetar para enviar en una sola petición
+      const payload = {
+        items: items.map((i) => ({
+          tabla: i.tabla,
+          operacion: i.operacion,
+          payload: JSON.parse(i.payload),
+        })),
+      };
 
-          const resp = await fetch(`${BACKEND_URL}/api/sync`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              tabla: item.tabla,
-              operacion: item.operacion,
-              payload: JSON.parse(item.payload),
-            }),
-            signal: controller.signal,
-          });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-          clearTimeout(timeout);
+      const resp = await fetch(API_ENDPOINTS.sync, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
 
-          if (resp.ok) {
-            await SyncRepository.marcarSincronizado(item.id);
-          } else {
-            await SyncRepository.incrementarIntento(item.id);
-          }
-        } catch {
-          // Error de red individual — incrementar intentos y seguir
-          await SyncRepository.incrementarIntento(item.id);
+      clearTimeout(timer);
+
+      if (!resp.ok) {
+        const errorBody = await resp.text();
+        throw new Error(`HTTP ${resp.status}: ${errorBody.slice(0, 200)}`);
+      }
+
+      const data = await resp.json() as {
+        resultados: Array<{ index: number; ok: boolean; error?: string }>;
+      };
+
+      // Marcar como sincronizados los items exitosos, incrementar intentos en los fallidos
+      for (let idx = 0; idx < items.length; idx++) {
+        const resultado = data.resultados.find((r) => r.index === idx);
+        if (resultado?.ok) {
+          await SyncRepository.marcarSincronizado(items[idx].id);
+        } else {
+          await SyncRepository.incrementarIntento(items[idx].id);
         }
       }
 
+      await ConfigRepository.guardar(CLAVES.ULTIMA_SYNC, new Date().toISOString());
       await contarPendientes();
-      setEstado('exito');
-
-      // Limpieza periódica
       await SyncRepository.limpiarAntiguos();
+      setEstado('exito');
       return true;
     } catch (e) {
       setError(String(e));
@@ -87,7 +107,6 @@ export function useSync() {
     }
   }, [estado, conectado, contarPendientes]);
 
-  // Cargar conteo de pendientes al montar
   useEffect(() => {
     contarPendientes();
   }, [contarPendientes]);

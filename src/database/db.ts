@@ -139,6 +139,19 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
       `DELETE FROM usuarios`,
     ],
   },
+  {
+    // Migración v4 — config persistente.
+    // Tabla key-value para guardar token de API, IDs remotos y futuras prefs
+    // sin agregar AsyncStorage como dependencia.
+    version: 4,
+    sentencias: [
+      `CREATE TABLE IF NOT EXISTS app_config (
+        clave TEXT PRIMARY KEY,
+        valor TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      )`,
+    ],
+  },
 ];
 
 async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {
