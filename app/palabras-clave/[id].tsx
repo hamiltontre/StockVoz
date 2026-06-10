@@ -15,19 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
+import { COLORES as C } from '../../src/theme/colors';
 import type { Producto, PalabraClave } from '../../src/types';
-
-const C = {
-  fondo: '#0f172a',
-  tarjeta: '#1e293b',
-  borde: '#334155',
-  texto: '#f1f5f9',
-  subtexto: '#94a3b8',
-  acento: '#38bdf8',
-  verde: '#4ade80',
-  rojo: '#f87171',
-  amarillo: '#fbbf24',
-};
 
 export default function PantallaKeywords() {
   const { id } = useLocalSearchParams<{ id: string }>();

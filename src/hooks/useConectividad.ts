@@ -2,38 +2,71 @@ import { useState, useEffect } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
 /**
- * RF-05 — Monitorea la conectividad a internet de forma nativa.
- * No requiere librerías externas: usa fetch a un endpoint confiable.
- * La app funciona 100% offline; este hook solo informa el estado.
+ * RF-05 — Detección de conectividad robusta con múltiples endpoints.
+ *
+ * No depende de un solo proveedor (dns.google puede estar bloqueado en
+ * ciertas redes corporativas o ISPs nicaragüenses). Lanza peticiones
+ * HEAD en paralelo a varios endpoints — si CUALQUIERA responde,
+ * consideramos que hay internet. Esto evita falsos negativos.
  */
+
+const ENDPOINTS = [
+  'https://dns.google/resolve?name=google.com',
+  'https://cloudflare.com/cdn-cgi/trace',
+  'https://www.gstatic.com/generate_204',
+];
+
+const TIMEOUT_MS = 3000;
+
+async function ping(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    await fetch(url, {
+      method: 'HEAD',
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    clearTimeout(timer);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Devuelve true si CUALQUIER endpoint responde — Promise.any() falla
+ * solo si todos rechazan/fallan, así un endpoint bloqueado no afecta.
+ */
+async function hayInternet(): Promise<boolean> {
+  try {
+    await Promise.any(
+      ENDPOINTS.map(async (url) => {
+        const ok = await ping(url);
+        if (!ok) throw new Error('no');
+        return true;
+      })
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function useConectividad() {
   const [conectado, setConectado] = useState<boolean | null>(null);
 
   const verificar = async () => {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-      await fetch('https://dns.google/resolve?name=google.com', {
-        method: 'HEAD',
-        signal: controller.signal,
-        cache: 'no-store',
-      });
-      clearTimeout(timeout);
-      setConectado(true);
-    } catch {
-      setConectado(false);
-    }
+    setConectado(await hayInternet());
   };
 
   useEffect(() => {
     verificar();
 
-    // Reverificar cuando la app vuelve al primer plano
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') verificar();
     });
 
-    // Reverificar cada 30 segundos
     const intervalo = setInterval(verificar, 30_000);
 
     return () => {

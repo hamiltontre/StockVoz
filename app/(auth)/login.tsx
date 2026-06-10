@@ -9,12 +9,7 @@ import { UsuarioRepository } from '../../src/database/repositories/UsuarioReposi
 import { useSesion } from '../../src/context/SesionContext';
 import type { Usuario } from '../../src/types';
 
-const C = {
-  fondo: '#0f172a', tarjeta: '#1e293b', borde: '#334155',
-  texto: '#f1f5f9', subtexto: '#94a3b8', acento: '#38bdf8',
-  verde: '#4ade80', rojo: '#f87171', amarillo: '#fbbf24',
-};
-
+import { COLORES as C } from '../../src/theme/colors';
 const TECLAS = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
 
 export default function PantallaLogin() {

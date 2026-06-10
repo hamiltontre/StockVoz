@@ -19,17 +19,7 @@ import { useInventario } from '../../src/hooks/useInventario';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
 import type { Producto, CrearProductoDTO } from '../../src/types';
 
-const C = {
-  fondo: '#0f172a',
-  tarjeta: '#1e293b',
-  borde: '#334155',
-  texto: '#f1f5f9',
-  subtexto: '#94a3b8',
-  acento: '#38bdf8',
-  rojo: '#f87171',
-  amarillo: '#fbbf24',
-};
-
+import { COLORES as C } from '../../src/theme/colors';
 const VACIO_DTO: CrearProductoDTO = {
   nombre: '',
   codigo_barras: null,

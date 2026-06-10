@@ -106,6 +106,7 @@ export interface Usuario {
   nombre: string;
   rol: RolUsuario;
   pin_hash: string;
+  salt: string;
   activo: boolean;
   creado_en: string;
   ultimo_acceso: string | null;
@@ -117,9 +118,9 @@ export type CrearUsuarioDTO = {
   pin: string; // 4 dígitos — se hashea antes de guardar
 };
 
-// Sesión activa en memoria (nunca persiste el PIN)
+// Sesión activa en memoria (nunca persiste credenciales)
 export interface SesionActiva {
-  usuario: Omit<Usuario, 'pin_hash'>;
+  usuario: Omit<Usuario, 'pin_hash' | 'salt'>;
 }
 
 // ─── Resultado estándar para operaciones de repositorio ──────────────────────

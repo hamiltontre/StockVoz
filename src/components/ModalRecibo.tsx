@@ -7,17 +7,12 @@ import { centavosACordobas } from '../utils/money';
 import { getDb } from '../database/db';
 import type { VentaConDetalle } from '../types';
 
+import { COLORES as C } from '../theme/colors';
 interface Props {
   venta: VentaConDetalle | null;
   visible: boolean;
   onCerrar: () => void;
 }
-
-const C = {
-  fondo: '#0f172a', tarjeta: '#1e293b', borde: '#334155',
-  texto: '#f1f5f9', subtexto: '#94a3b8', acento: '#38bdf8',
-  verde: '#4ade80',
-};
 
 function formatearFechaHora(iso: string): string {
   const d = new Date(iso);

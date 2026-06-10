@@ -1,5 +1,5 @@
 import { getDb } from '../db';
-import { hashPin, verificarPin } from '../../utils/hash';
+import { hashPin, verificarPin, generarSalt } from '../../utils/hash';
 import type { Usuario, CrearUsuarioDTO, RolUsuario, Result } from '../../types';
 
 const NEGOCIO_ID = 1;
@@ -11,6 +11,7 @@ function rowToUsuario(row: Record<string, unknown>): Usuario {
     nombre: row.nombre as string,
     rol: row.rol as RolUsuario,
     pin_hash: row.pin_hash as string,
+    salt: (row.salt as string) ?? '',
     activo: (row.activo as number) === 1,
     creado_en: row.creado_en as string,
     ultimo_acceso: (row.ultimo_acceso as string) ?? null,
@@ -68,9 +69,10 @@ export const UsuarioRepository = {
       }
 
       const db = await getDb();
+      const salt = generarSalt();
       const result = await db.runAsync(
-        'INSERT INTO usuarios (negocio_id, nombre, rol, pin_hash) VALUES (?, ?, ?, ?)',
-        [NEGOCIO_ID, dto.nombre.trim(), dto.rol, hashPin(dto.pin)]
+        'INSERT INTO usuarios (negocio_id, nombre, rol, pin_hash, salt) VALUES (?, ?, ?, ?, ?)',
+        [NEGOCIO_ID, dto.nombre.trim(), dto.rol, hashPin(dto.pin, salt), salt]
       );
       const created = await db.getFirstAsync<Record<string, unknown>>(
         'SELECT * FROM usuarios WHERE id = ?',
@@ -88,16 +90,20 @@ export const UsuarioRepository = {
       if (pinNuevoError) return { ok: false, error: pinNuevoError };
 
       const db = await getDb();
-      const row = await db.getFirstAsync<{ pin_hash: string }>(
-        'SELECT pin_hash FROM usuarios WHERE id = ?',
+      const row = await db.getFirstAsync<{ pin_hash: string; salt: string }>(
+        'SELECT pin_hash, salt FROM usuarios WHERE id = ?',
         [id]
       );
       if (!row) return { ok: false, error: 'Usuario no encontrado' };
-      if (!verificarPin(pinActual, row.pin_hash)) return { ok: false, error: 'PIN actual incorrecto' };
+      if (!verificarPin(pinActual, row.salt, row.pin_hash)) {
+        return { ok: false, error: 'PIN actual incorrecto' };
+      }
 
+      // Generar NUEVO salt al cambiar el PIN (mejor práctica)
+      const nuevoSalt = generarSalt();
       await db.runAsync(
-        'UPDATE usuarios SET pin_hash = ? WHERE id = ?',
-        [hashPin(pinNuevo), id]
+        'UPDATE usuarios SET pin_hash = ?, salt = ? WHERE id = ?',
+        [hashPin(pinNuevo, nuevoSalt), nuevoSalt, id]
       );
       return { ok: true, data: undefined };
     } catch (e) {
@@ -111,9 +117,10 @@ export const UsuarioRepository = {
       if (pinError) return { ok: false, error: pinError };
 
       const db = await getDb();
+      const nuevoSalt = generarSalt();
       await db.runAsync(
-        'UPDATE usuarios SET pin_hash = ? WHERE id = ?',
-        [hashPin(pinNuevo), id]
+        'UPDATE usuarios SET pin_hash = ?, salt = ? WHERE id = ?',
+        [hashPin(pinNuevo, nuevoSalt), nuevoSalt, id]
       );
       return { ok: true, data: undefined };
     } catch (e) {
@@ -155,7 +162,7 @@ export const UsuarioRepository = {
       if (!rows.length) return { ok: false, error: 'Usuario no encontrado' };
 
       const usuario = rowToUsuario(rows[0]);
-      if (!verificarPin(pin, usuario.pin_hash)) {
+      if (!verificarPin(pin, usuario.salt, usuario.pin_hash)) {
         return { ok: false, error: 'PIN incorrecto' };
       }
 

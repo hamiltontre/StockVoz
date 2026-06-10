@@ -55,7 +55,8 @@ export function SesionProvider({ children }: { children: React.ReactNode }) {
   }, [sesion, segments, cargando, hayAdmin]);
 
   const iniciarSesion = useCallback((usuario: Usuario) => {
-    const { pin_hash, ...usuarioSeguro } = usuario;
+    // Nunca conservar credenciales en memoria
+    const { pin_hash, salt, ...usuarioSeguro } = usuario;
     setSesion({ usuario: usuarioSeguro });
     setHayAdmin(true);
   }, []);

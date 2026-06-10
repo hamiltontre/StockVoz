@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { bus, EVENTOS } from '../../utils/eventos';
 import type {
   Producto,
   CrearProductoDTO,
@@ -100,6 +101,8 @@ export const ProductoRepository = {
         'SELECT * FROM productos WHERE id = ?',
         [result.lastInsertRowId]
       );
+      bus.emit(EVENTOS.PRODUCTO_CAMBIO);
+      bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: rowToProducto(created!) };
     } catch (e) {
       return { ok: false, error: String(e) };
@@ -143,6 +146,8 @@ export const ProductoRepository = {
         [id]
       );
       if (!updated) return { ok: false, error: 'Producto no encontrado' };
+      bus.emit(EVENTOS.PRODUCTO_CAMBIO);
+      bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: rowToProducto(updated) };
     } catch (e) {
       return { ok: false, error: String(e) };
@@ -156,6 +161,8 @@ export const ProductoRepository = {
         "UPDATE productos SET activo = 0, actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
         [id]
       );
+      bus.emit(EVENTOS.PRODUCTO_CAMBIO);
+      bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: undefined };
     } catch (e) {
       return { ok: false, error: String(e) };
@@ -176,6 +183,7 @@ export const ProductoRepository = {
         "UPDATE productos SET stock = stock + ?, actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
         [cantidad, id]
       );
+      bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: undefined };
     } catch (e) {
       return { ok: false, error: String(e) };

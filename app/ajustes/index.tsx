@@ -11,14 +11,11 @@ import { useSesion } from '../../src/context/SesionContext';
 import { useConectividad } from '../../src/hooks/useConectividad';
 import { useSync } from '../../src/hooks/useSync';
 import { UsuarioRepository } from '../../src/database/repositories/UsuarioRepository';
+import { ApiCliente } from '../../src/services/apiCliente';
+import { ConfigRepository, CLAVES } from '../../src/database/repositories/ConfigRepository';
 import type { Negocio } from '../../src/types';
 
-const C = {
-  fondo: '#0f172a', tarjeta: '#1e293b', borde: '#334155',
-  texto: '#f1f5f9', subtexto: '#94a3b8', acento: '#38bdf8',
-  verde: '#4ade80', rojo: '#f87171', amarillo: '#fbbf24',
-};
-
+import { COLORES as C } from '../../src/theme/colors';
 const PLANES: Record<string, string> = {
   basico: '⭐ Plan Básico — $4/mes',
   premium: '🚀 Plan Premium — $8/mes',
@@ -39,6 +36,12 @@ export default function PantallaAjustes() {
   const [pinConfirm, setPinConfirm] = useState('');
   const [cambiandoPin, setCambiandoPin] = useState(false);
 
+  // Estado de la cuenta en la nube
+  const [nubeConectada, setNubeConectada] = useState(false);
+  const [nubeEmail, setNubeEmail] = useState('');
+  const [nubePassword, setNubePassword] = useState('');
+  const [conectandoNube, setConectandoNube] = useState(false);
+
   const cargar = useCallback(async () => {
     const db = await getDb();
     const row = await db.getFirstAsync<Negocio>('SELECT * FROM negocios WHERE id = 1');
@@ -46,7 +49,44 @@ export default function PantallaAjustes() {
       setNegocio(row);
       setNombreEditable(row.nombre);
     }
+    setNubeConectada(await ApiCliente.estaAutenticado());
   }, []);
+
+  const conectarNube = async () => {
+    if (!nubeEmail.trim() || !nubePassword) {
+      Alert.alert('Datos requeridos', 'Ingresa email y contraseña');
+      return;
+    }
+    setConectandoNube(true);
+    try {
+      await ApiCliente.login(nubeEmail.trim(), nubePassword);
+      setNubeConectada(true);
+      setNubeEmail('');
+      setNubePassword('');
+      Alert.alert('✓ Conectado', 'Tu negocio ahora sincroniza con la nube');
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'No se pudo conectar');
+    } finally {
+      setConectandoNube(false);
+    }
+  };
+
+  const desconectarNube = async () => {
+    Alert.alert(
+      'Desconectar de la nube',
+      'Tus ventas dejarán de sincronizarse con el servidor. Los datos locales permanecen.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Desconectar', style: 'destructive',
+          onPress: async () => {
+            await ApiCliente.logout();
+            setNubeConectada(false);
+          },
+        },
+      ]
+    );
+  };
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -200,8 +240,64 @@ export default function PantallaAjustes() {
           </Seccion>
         )}
 
-        {/* Sincronización — solo admin */}
+        {/* Cuenta en la nube — solo admin */}
         {esAdmin && (
+          <Seccion titulo="CUENTA EN LA NUBE">
+            {nubeConectada ? (
+              <>
+                <View style={s.fila}>
+                  <View style={s.filaIcono}>
+                    <Ionicons name="cloud-done" size={20} color={C.verde} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.filaLabel}>Conectado al backend StockVoz</Text>
+                    <Text style={s.filaSub}>Tus ventas se sincronizan automáticamente</Text>
+                  </View>
+                  <TouchableOpacity onPress={desconectarNube}>
+                    <Ionicons name="log-out-outline" size={20} color={C.rojo} />
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <View style={{ padding: 14, gap: 10 }}>
+                <Text style={[s.filaSub, { marginBottom: 6 }]}>
+                  Conecta tu negocio para acceder al dashboard web y sincronizar tus ventas.
+                </Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="Correo electrónico"
+                  placeholderTextColor={C.subtexto}
+                  value={nubeEmail}
+                  onChangeText={setNubeEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={s.input}
+                  placeholder="Contraseña"
+                  placeholderTextColor={C.subtexto}
+                  value={nubePassword}
+                  onChangeText={setNubePassword}
+                  secureTextEntry
+                />
+                <TouchableOpacity
+                  style={[s.btnCambiarPin, conectandoNube && { opacity: 0.6 }]}
+                  onPress={conectarNube}
+                  disabled={conectandoNube}
+                  activeOpacity={0.85}
+                >
+                  {conectandoNube
+                    ? <ActivityIndicator color={C.fondo} size="small" />
+                    : <Text style={s.btnCambiarPinTexto}>Conectar</Text>}
+                </TouchableOpacity>
+              </View>
+            )}
+          </Seccion>
+        )}
+
+        {/* Sincronización — solo admin */}
+        {esAdmin && nubeConectada && (
           <Seccion titulo="SINCRONIZACIÓN">
             <View style={s.fila}>
               <View style={s.filaIcono}>
