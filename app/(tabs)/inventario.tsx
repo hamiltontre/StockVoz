@@ -350,12 +350,16 @@ export default function PantallaInventario() {
                 placeholder="DD/MM/AAAA — ej: 11/06/2027"
                 placeholderTextColor={C.subtexto}
                 keyboardType="number-pad"
-                maxLength={7}
+                maxLength={10}
                 value={fechaVencTexto}
                 onChangeText={(v) => {
+                  // Solo números
                   const cleaned = v.replace(/\D/g, '');
-                  if (cleaned.length <= 2) setFechaVencTexto(cleaned);
-                  else setFechaVencTexto(cleaned.slice(0, 2) + '/' + cleaned.slice(2, 6));
+                  let formatted = '';
+                  if (cleaned.length >= 1) formatted = cleaned.slice(0, 2);
+                  if (cleaned.length >= 3) formatted = cleaned.slice(0, 2) + '/' + cleaned.slice(2, 4);
+                  if (cleaned.length >= 5) formatted = cleaned.slice(0, 2) + '/' + cleaned.slice(2, 4) + '/' + cleaned.slice(4, 8);
+                  setFechaVencTexto(formatted);
                 }}
               />
             </Campo>
