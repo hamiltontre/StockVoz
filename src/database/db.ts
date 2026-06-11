@@ -169,6 +169,16 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
   },
 ];
 
+/**
+ * Una migración interrumpida (reload de Metro, crash, batería) puede dejar
+ * columnas ya creadas sin haber registrado la versión. Al reintentar, el
+ * ALTER TABLE falla con "duplicate column name" — eso no es un error real,
+ * es la mitad ya aplicada de la misma migración.
+ */
+function esColumnaDuplicada(e: unknown): boolean {
+  return String(e).toLowerCase().includes('duplicate column name');
+}
+
 async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let versionActual = row?.user_version ?? 0;
@@ -176,14 +186,20 @@ async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {
   for (const migracion of MIGRACIONES) {
     if (versionActual >= migracion.version) continue;
 
-    // Cada sentencia corre de forma individual con runAsync
-    // para evitar transacciones implícitas anidadas de execAsync
-    for (const sql of migracion.sentencias) {
-      await db.runAsync(sql);
-    }
-
-    // Actualizar versión tras cada migración exitosa
-    await db.runAsync(`PRAGMA user_version = ${migracion.version}`);
+    // Transacción por migración: o se aplica completa (incluida la versión)
+    // o no se aplica nada. Sin esto, un reload a mitad de camino deja la DB
+    // en un estado intermedio irrecuperable.
+    await db.withTransactionAsync(async () => {
+      for (const sql of migracion.sentencias) {
+        try {
+          await db.runAsync(sql);
+        } catch (e) {
+          if (esColumnaDuplicada(e)) continue; // repara DBs que quedaron a medias
+          throw e;
+        }
+      }
+      await db.runAsync(`PRAGMA user_version = ${migracion.version}`);
+    });
     versionActual = migracion.version;
   }
 }
