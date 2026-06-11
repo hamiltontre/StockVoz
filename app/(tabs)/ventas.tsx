@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useVentas } from '../../src/hooks/useVentas';
 import { useVoz } from '../../src/hooks/useVoz';
+import { useSesion } from '../../src/context/SesionContext';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
 import { ModalRecibo } from '../../src/components/ModalRecibo';
@@ -28,6 +29,7 @@ export default function PantallaVentas() {
   const [buscarVisible, setBuscarVisible] = useState(false);
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
+  const { sesion } = useSesion();
   const { estado: estadoVoz, resultado: resultadoVoz, iniciarEscucha, detenerEscucha, limpiar, segundosRestantes } = useVoz();
 
   useEffect(() => {
@@ -266,6 +268,7 @@ export default function PantallaVentas() {
         venta={ventaRecibo}
         visible={reciboVisible}
         onCerrar={() => { setReciboVisible(false); setVentaRecibo(null); }}
+        esAdmin={sesion?.usuario.rol === 'admin'}
       />
     </SafeAreaView>
   );
