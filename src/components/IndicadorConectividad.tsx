@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useConectividad } from '../hooks/useConectividad';
+import { COLORES as C } from '../theme/colors';
 
 /**
  * Barra fina que aparece solo cuando NO hay internet.
@@ -14,7 +15,7 @@ export function IndicadorConectividad() {
 
   return (
     <View style={s.barra}>
-      <Ionicons name="cloud-offline-outline" size={14} color="#fbbf24" />
+      <Ionicons name="cloud-offline-outline" size={14} color={C.amarillo} />
       <Text style={s.texto}>Sin internet — modo offline activo</Text>
     </View>
   );
@@ -26,15 +27,15 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#1c1708',
+    backgroundColor: C.amarilloClaro,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#78350f',
+    borderBottomColor: C.amarillo,
   },
   texto: {
     fontSize: 12,
-    color: '#fbbf24',
+    color: C.amarillo,
     fontWeight: '600',
   },
 });

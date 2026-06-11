@@ -418,7 +418,7 @@ function Seccion({ titulo, children }: { titulo: string; children: React.ReactNo
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View>
-      <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '600', marginBottom: 4, textTransform: 'uppercase' }}>
+      <Text style={{ color: C.subtexto, fontSize: 11, fontWeight: '600', marginBottom: 4, textTransform: 'uppercase' }}>
         {label}
       </Text>
       {children}
@@ -471,8 +471,8 @@ const s = StyleSheet.create({
   btnCambiarPinTexto: { color: C.fondo, fontWeight: '700', fontSize: 15 },
   btnCerrarSesion: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, padding: 14, backgroundColor: '#3a0808',
-    borderRadius: 14, borderWidth: 1, borderColor: '#5a1010', marginTop: 8,
+    gap: 8, padding: 14, backgroundColor: C.rojoClaro,
+    borderRadius: 14, borderWidth: 1, borderColor: C.rojo, marginTop: 8,
   },
   btnCerrarTexto: { color: C.rojo, fontWeight: '700', fontSize: 15 },
 });

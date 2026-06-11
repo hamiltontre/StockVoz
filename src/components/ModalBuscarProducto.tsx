@@ -151,9 +151,9 @@ const s = StyleSheet.create({
   itemNombre: { fontSize: 15, fontWeight: '600', color: C.texto },
   itemPrecio: { fontSize: 13, color: C.acento, marginTop: 2 },
   stockBadge: {
-    backgroundColor: '#1a3a1a', borderRadius: 8,
+    backgroundColor: C.verdeClaro, borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 4,
   },
-  stockBajo: { backgroundColor: '#3a1a00' },
+  stockBajo: { backgroundColor: C.amarilloClaro },
   stockTexto: { color: C.texto, fontSize: 12, fontWeight: '600' },
 });

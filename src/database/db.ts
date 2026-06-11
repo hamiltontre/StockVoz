@@ -152,6 +152,21 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
       )`,
     ],
   },
+  {
+    // Migración v5 — negocio real: rentabilidad y vencimientos.
+    // precio_costo permite calcular la ganancia real, no solo el ingreso.
+    // fecha_vencimiento es crítico para farmacias y pulperías.
+    // unidad de medida hace inteligente la interpretación de voz
+    // ("dos cajas de Tylenol" vs "dos pastillas de Tylenol").
+    version: 5,
+    sentencias: [
+      `ALTER TABLE productos ADD COLUMN precio_costo INTEGER NOT NULL DEFAULT 0 CHECK(precio_costo >= 0)`,
+      `ALTER TABLE productos ADD COLUMN fecha_vencimiento TEXT`,
+      `ALTER TABLE productos ADD COLUMN unidad TEXT NOT NULL DEFAULT 'unidad'
+         CHECK(unidad IN ('unidad','caja','docena','libra','litro','metro','par','paquete'))`,
+      `CREATE INDEX IF NOT EXISTS idx_productos_vencimiento ON productos(fecha_vencimiento)`,
+    ],
+  },
 ];
 
 async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {

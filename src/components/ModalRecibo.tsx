@@ -12,6 +12,8 @@ interface Props {
   venta: VentaConDetalle | null;
   visible: boolean;
   onCerrar: () => void;
+  /** Si es admin, muestra la ganancia de la venta (nunca se comparte al cliente) */
+  esAdmin?: boolean;
 }
 
 function formatearFechaHora(iso: string): string {
@@ -22,8 +24,10 @@ function formatearFechaHora(iso: string): string {
   });
 }
 
-export function ModalRecibo({ venta, visible, onCerrar }: Props) {
+export function ModalRecibo({ venta, visible, onCerrar, esAdmin = false }: Props) {
   const [nombreNegocio, setNombreNegocio] = useState('Mi Negocio');
+  // null = sin datos de costo (no se muestra la sección)
+  const [ganancia, setGanancia] = useState<number | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -35,6 +39,27 @@ export function ModalRecibo({ venta, visible, onCerrar }: Props) {
       });
     }
   }, [visible]);
+
+  // M-07: ganancia de la venta para el dueño. Usa el costo actual del
+  // producto (mismo criterio que el reporte de rentabilidad).
+  useEffect(() => {
+    if (!visible || !esAdmin || !venta) {
+      setGanancia(null);
+      return;
+    }
+    getDb().then(async (db) => {
+      const row = await db.getFirstAsync<{ ganancia: number; con_costo: number }>(
+        `SELECT
+           COALESCE(SUM((dv.precio_unitario - COALESCE(p.precio_costo, 0)) * dv.cantidad), 0) AS ganancia,
+           COALESCE(SUM(CASE WHEN p.precio_costo > 0 THEN 1 ELSE 0 END), 0) AS con_costo
+         FROM detalle_ventas dv
+         LEFT JOIN productos p ON p.id = dv.producto_id
+         WHERE dv.venta_id = ?`,
+        [venta.id]
+      );
+      setGanancia(row && row.con_costo > 0 ? row.ganancia : null);
+    }).catch(() => setGanancia(null));
+  }, [visible, esAdmin, venta]);
 
   if (!venta) return null;
 
@@ -133,7 +158,7 @@ StockVoz
               {venta.descuento > 0 && (
                 <View style={s.totalFila}>
                   <Text style={s.totalLabel}>Descuento</Text>
-                  <Text style={[s.totalValor, { color: '#f87171' }]}>
+                  <Text style={[s.totalValor, { color: C.rojo }]}>
                     -{centavosACordobas(venta.descuento)}
                   </Text>
                 </View>
@@ -146,6 +171,21 @@ StockVoz
               <Text style={s.gracias}>¡Gracias por su compra!</Text>
               <Text style={s.poweredBy}>StockVoz</Text>
             </View>
+
+            {/* Ganancia — solo visible para el admin, fuera del recibo
+                que se comparte al cliente */}
+            {esAdmin && ganancia !== null && (
+              <View style={s.gananciaBox}>
+                <View style={s.gananciaHeader}>
+                  <Ionicons name="lock-closed-outline" size={13} color={C.verde} />
+                  <Text style={s.gananciaTitulo}>Solo para el dueño</Text>
+                </View>
+                <View style={s.gananciaFila}>
+                  <Text style={s.gananciaLabel}>Ganancia de esta venta</Text>
+                  <Text style={s.gananciaValor}>{centavosACordobas(ganancia)}</Text>
+                </View>
+              </View>
+            )}
           </ScrollView>
 
           {/* Acciones */}
@@ -227,4 +267,17 @@ const s = StyleSheet.create({
     backgroundColor: C.acento, borderRadius: 14, paddingVertical: 14, gap: 6,
   },
   btnPrimarioTexto: { color: C.fondo, fontSize: 15, fontWeight: '700' },
+  gananciaBox: {
+    backgroundColor: C.verdeClaro, borderRadius: 12,
+    borderWidth: 1, borderColor: C.verde,
+    padding: 14, marginTop: 12,
+  },
+  gananciaHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
+  gananciaTitulo: {
+    color: C.verde, fontSize: 10, fontWeight: '800',
+    textTransform: 'uppercase', letterSpacing: 1,
+  },
+  gananciaFila: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  gananciaLabel: { color: C.texto, fontSize: 13, fontWeight: '500' },
+  gananciaValor: { color: C.verde, fontSize: 18, fontWeight: '800' },
 });

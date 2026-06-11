@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,10 +25,22 @@ const VACIO_DTO: CrearProductoDTO = {
   nombre: '',
   codigo_barras: null,
   precio: 0,
+  precio_costo: 0,
   stock: 0,
   stock_minimo: 1,
   categoria_id: null,
+  fecha_vencimiento: null,
+  unidad: 'unidad',
 };
+
+const UNIDADES: Array<{ valor: 'unidad' | 'caja' | 'docena' | 'libra' | 'litro' | 'paquete'; label: string }> = [
+  { valor: 'unidad', label: 'Unidad' },
+  { valor: 'caja', label: 'Caja' },
+  { valor: 'docena', label: 'Docena' },
+  { valor: 'libra', label: 'Libra' },
+  { valor: 'litro', label: 'Litro' },
+  { valor: 'paquete', label: 'Paquete' },
+];
 
 export default function PantallaInventario() {
   const router = useRouter();
@@ -37,6 +50,8 @@ export default function PantallaInventario() {
   const [editando, setEditando] = useState<Producto | null>(null);
   const [form, setForm] = useState<CrearProductoDTO>(VACIO_DTO);
   const [precioTexto, setPrecioTexto] = useState('');
+  const [precioCostoTexto, setPrecioCostoTexto] = useState('');
+  const [fechaVencTexto, setFechaVencTexto] = useState(''); // formato MM/AAAA
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => { cargar(); }, [cargar]);
@@ -53,6 +68,8 @@ export default function PantallaInventario() {
     setEditando(null);
     setForm(VACIO_DTO);
     setPrecioTexto('');
+    setPrecioCostoTexto('');
+    setFechaVencTexto('');
     setModalVisible(true);
   };
 
@@ -62,12 +79,40 @@ export default function PantallaInventario() {
       nombre: producto.nombre,
       codigo_barras: producto.codigo_barras,
       precio: producto.precio,
+      precio_costo: producto.precio_costo ?? 0,
       stock: producto.stock,
       stock_minimo: producto.stock_minimo,
       categoria_id: producto.categoria_id,
+      fecha_vencimiento: producto.fecha_vencimiento ?? null,
+      unidad: producto.unidad ?? 'unidad',
     });
     setPrecioTexto((producto.precio / 100).toFixed(2));
+    setPrecioCostoTexto(producto.precio_costo > 0 ? (producto.precio_costo / 100).toFixed(2) : '');
+    // ISO yyyy-mm-dd → MM/AAAA
+    if (producto.fecha_vencimiento) {
+      const [yyyy, mm] = producto.fecha_vencimiento.split('-');
+      setFechaVencTexto(`${mm}/${yyyy}`);
+    } else {
+      setFechaVencTexto('');
+    }
     setModalVisible(true);
+  };
+
+  /**
+   * MM/AAAA → ISO yyyy-mm-dd (último día del mes).
+   * Devuelve null si el formato no es válido.
+   */
+  const parseFechaVenc = (texto: string): string | null => {
+    const limpio = texto.trim();
+    if (!limpio) return null;
+    const match = limpio.match(/^(\d{2})\/(\d{4})$/);
+    if (!match) return null;
+    const mm = parseInt(match[1], 10);
+    const yyyy = parseInt(match[2], 10);
+    if (mm < 1 || mm > 12 || yyyy < 2020 || yyyy > 2099) return null;
+    // Último día del mes
+    const ultDia = new Date(yyyy, mm, 0).getDate();
+    return `${yyyy}-${String(mm).padStart(2, '0')}-${String(ultDia).padStart(2, '0')}`;
   };
 
   const confirmarEliminar = (producto: Producto) => {
@@ -94,7 +139,30 @@ export default function PantallaInventario() {
       return;
     }
     const precio = cordobasACentavos(parseFloat(precioTexto) || 0);
-    const dto = { ...form, precio };
+    const precio_costo = cordobasACentavos(parseFloat(precioCostoTexto) || 0);
+    const fecha_vencimiento = parseFechaVenc(fechaVencTexto);
+    if (fechaVencTexto.trim() && !fecha_vencimiento) {
+      Alert.alert('Fecha inválida', 'Usa el formato MM/AAAA, ej: 03/2027');
+      return;
+    }
+    if (precio_costo > 0 && precio > 0 && precio < precio_costo) {
+      Alert.alert(
+        'Precio menor al costo',
+        'El precio de venta es menor al precio de costo. ¿Continuar?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Continuar', onPress: () => guardarConfirmado({ precio, precio_costo, fecha_vencimiento }) },
+        ]
+      );
+      return;
+    }
+    await guardarConfirmado({ precio, precio_costo, fecha_vencimiento });
+  };
+
+  const guardarConfirmado = async (
+    extra: { precio: number; precio_costo: number; fecha_vencimiento: string | null }
+  ) => {
+    const dto = { ...form, ...extra };
 
     setGuardando(true);
     let err: string | null;
@@ -212,6 +280,7 @@ export default function PantallaInventario() {
               </TouchableOpacity>
             </View>
 
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Campo label="Nombre *" >
               <TextInput
                 style={s.input}
@@ -222,14 +291,70 @@ export default function PantallaInventario() {
               />
             </Campo>
 
-            <Campo label="Precio (C$) *">
+            <View style={s.fila}>
+              <View style={{ flex: 1 }}>
+                <Campo label="Precio venta (C$) *">
+                  <TextInput
+                    style={s.input}
+                    placeholder="0.00"
+                    placeholderTextColor={C.subtexto}
+                    keyboardType="decimal-pad"
+                    value={precioTexto}
+                    onChangeText={setPrecioTexto}
+                  />
+                </Campo>
+              </View>
+              <View style={{ width: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Campo label="Precio costo (C$)">
+                  <TextInput
+                    style={s.input}
+                    placeholder="0.00"
+                    placeholderTextColor={C.subtexto}
+                    keyboardType="decimal-pad"
+                    value={precioCostoTexto}
+                    onChangeText={setPrecioCostoTexto}
+                  />
+                </Campo>
+              </View>
+            </View>
+
+            {parseFloat(precioTexto) > 0 && parseFloat(precioCostoTexto) > 0 && (
+              <Text style={s.margenTexto}>
+                Ganancia: C$ {(parseFloat(precioTexto) - parseFloat(precioCostoTexto)).toFixed(2)}
+                {'  '}({(((parseFloat(precioTexto) - parseFloat(precioCostoTexto)) / parseFloat(precioTexto)) * 100).toFixed(0)}%)
+              </Text>
+            )}
+
+            <Campo label="Unidad de medida">
+              <View style={s.chipRow}>
+                {UNIDADES.map(({ valor, label }) => (
+                  <TouchableOpacity
+                    key={valor}
+                    style={[s.chipUnidad, form.unidad === valor && s.chipUnidadActivo]}
+                    onPress={() => setForm((f) => ({ ...f, unidad: valor }))}
+                  >
+                    <Text style={[s.chipUnidadTexto, form.unidad === valor && s.chipUnidadTextoActivo]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Campo>
+
+            <Campo label="Vencimiento (opcional)">
               <TextInput
                 style={s.input}
-                placeholder="0.00"
+                placeholder="MM/AAAA — ej: 03/2027"
                 placeholderTextColor={C.subtexto}
-                keyboardType="decimal-pad"
-                value={precioTexto}
-                onChangeText={setPrecioTexto}
+                keyboardType="number-pad"
+                maxLength={7}
+                value={fechaVencTexto}
+                onChangeText={(v) => {
+                  const cleaned = v.replace(/\D/g, '');
+                  if (cleaned.length <= 2) setFechaVencTexto(cleaned);
+                  else setFechaVencTexto(cleaned.slice(0, 2) + '/' + cleaned.slice(2, 6));
+                }}
               />
             </Campo>
 
@@ -281,6 +406,7 @@ export default function PantallaInventario() {
                 </Text>
               )}
             </TouchableOpacity>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -291,7 +417,7 @@ export default function PantallaInventario() {
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View style={{ marginBottom: 14 }}>
-      <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <Text style={{ color: C.subtexto, fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {label}
       </Text>
       {children}
@@ -334,7 +460,7 @@ const s = StyleSheet.create({
   },
   busquedaIcon: { marginRight: 8 },
   busquedaInput: { flex: 1, color: C.texto, fontSize: 15 },
-  errorBanner: { backgroundColor: '#450a0a', marginHorizontal: 20, borderRadius: 10, padding: 12, marginBottom: 10 },
+  errorBanner: { backgroundColor: C.rojoClaro, marginHorizontal: 20, borderRadius: 10, padding: 12, marginBottom: 10 },
   errorTexto: { color: C.rojo, fontSize: 13 },
   centrado: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   lista: { paddingHorizontal: 20, paddingBottom: 16, flexGrow: 1 },
@@ -356,8 +482,8 @@ const s = StyleSheet.create({
   tarjetaPrecio: { fontSize: 14, color: C.acento, marginTop: 2 },
   tarjetaDerecha: { alignItems: 'flex-end', gap: 8 },
   tarjetaAcciones: { flexDirection: 'row', gap: 14 },
-  stockBadge: { backgroundColor: '#1a3a1a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  stockBadgeBajo: { backgroundColor: '#3a1a00' },
+  stockBadge: { backgroundColor: C.verdeClaro, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  stockBadgeBajo: { backgroundColor: C.amarilloClaro },
   stockTexto: { color: C.texto, fontSize: 12, fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContenido: {
@@ -366,6 +492,7 @@ const s = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 24,
     paddingBottom: 40,
+    maxHeight: '88%',
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitulo: { fontSize: 18, fontWeight: '700', color: C.texto },
@@ -387,4 +514,17 @@ const s = StyleSheet.create({
     marginTop: 8,
   },
   botonGuardarTexto: { color: C.fondo, fontWeight: '700', fontSize: 16 },
+  margenTexto: { color: C.verde, fontSize: 13, fontWeight: '600', marginTop: -8, marginBottom: 14 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chipUnidad: {
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    backgroundColor: C.fondo,
+  },
+  chipUnidadActivo: { backgroundColor: C.acento, borderColor: C.acento },
+  chipUnidadTexto: { color: C.subtexto, fontSize: 13, fontWeight: '600' },
+  chipUnidadTextoActivo: { color: C.fondo },
 });

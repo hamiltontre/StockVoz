@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { SyncRepository } from './SyncRepository';
+import { ConfigRepository, CLAVES } from './ConfigRepository';
 import { bus, EVENTOS } from '../../utils/eventos';
 import type {
   Venta,
@@ -9,7 +10,13 @@ import type {
   Result,
 } from '../../types';
 
-const NEGOCIO_ID = 1; // single-tenant v1
+// Preparación multi-tenant: el id real viene de la config (asignado al
+// vincular con la nube); 1 es el fallback para instalaciones offline puras.
+async function obtenerNegocioId(): Promise<number> {
+  const valor = await ConfigRepository.obtener(CLAVES.NEGOCIO_REMOTO_ID);
+  const id = valor ? parseInt(valor, 10) : NaN;
+  return Number.isFinite(id) && id > 0 ? id : 1;
+}
 
 function rowToVenta(row: Record<string, unknown>): Venta {
   return {
@@ -42,6 +49,7 @@ export const VentaRepository = {
     if (dto.descuento < 0) return { ok: false, error: 'El descuento no puede ser negativo' };
 
     try {
+      const negocioId = await obtenerNegocioId();
       const db = await getDb();
       let ventaCreada: VentaConDetalle | null = null;
 
@@ -55,7 +63,7 @@ export const VentaRepository = {
         const ventaResult = await db.runAsync(
           `INSERT INTO ventas (negocio_id, total, descuento, metodo_pago, notas)
            VALUES (?, ?, ?, ?, ?)`,
-          [NEGOCIO_ID, total, dto.descuento, dto.metodo_pago, dto.notas ?? null]
+          [negocioId, total, dto.descuento, dto.metodo_pago, dto.notas ?? null]
         );
         const ventaId = ventaResult.lastInsertRowId;
 

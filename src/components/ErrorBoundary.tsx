@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { COLORES as C } from '../theme/colors';
 
 interface Props {
   children: React.ReactNode;
@@ -46,7 +47,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         <ScrollView contentContainerStyle={s.scroll}>
           <View style={s.iconoArea}>
             <View style={s.iconoCirculo}>
-              <Ionicons name="warning-outline" size={48} color="#fbbf24" />
+              <Ionicons name="warning-outline" size={48} color={C.amarillo} />
             </View>
           </View>
 
@@ -56,7 +57,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </Text>
 
           <TouchableOpacity style={s.botonReintentar} onPress={this.reintentar} activeOpacity={0.85}>
-            <Ionicons name="refresh" size={18} color="#0f172a" />
+            <Ionicons name="refresh" size={18} color={C.sobreAcento} />
             <Text style={s.botonReintentarTexto}>Reintentar</Text>
           </TouchableOpacity>
 
@@ -78,35 +79,35 @@ export class ErrorBoundary extends React.Component<Props, State> {
 }
 
 const s = StyleSheet.create({
-  contenedor: { flex: 1, backgroundColor: '#0f172a' },
+  contenedor: { flex: 1, backgroundColor: C.fondo },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   iconoArea: { alignItems: 'center', marginBottom: 24 },
   iconoCirculo: {
     width: 96, height: 96, borderRadius: 28,
-    backgroundColor: '#1c1708', borderWidth: 2, borderColor: '#78350f',
+    backgroundColor: C.amarilloClaro, borderWidth: 2, borderColor: C.amarillo,
     alignItems: 'center', justifyContent: 'center',
   },
   titulo: {
-    fontSize: 24, fontWeight: '800', color: '#f1f5f9',
+    fontSize: 24, fontWeight: '800', color: C.texto,
     textAlign: 'center', marginBottom: 8,
   },
   subtitulo: {
-    fontSize: 14, color: '#94a3b8',
+    fontSize: 14, color: C.subtexto,
     textAlign: 'center', lineHeight: 20, marginBottom: 32, paddingHorizontal: 16,
   },
   botonReintentar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#38bdf8', borderRadius: 14, paddingVertical: 14, marginHorizontal: 32,
+    backgroundColor: C.acento, borderRadius: 14, paddingVertical: 14, marginHorizontal: 32,
   },
-  botonReintentarTexto: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
+  botonReintentarTexto: { fontSize: 16, fontWeight: '700', color: C.sobreAcento },
   detalleDev: {
-    backgroundColor: '#1e293b', borderRadius: 12,
-    borderWidth: 1, borderColor: '#334155', padding: 12, marginTop: 32,
+    backgroundColor: C.tarjeta, borderRadius: 12,
+    borderWidth: 1, borderColor: C.borde, padding: 12, marginTop: 32,
   },
   detalleLabel: {
-    fontSize: 10, fontWeight: '700', color: '#fbbf24',
+    fontSize: 10, fontWeight: '700', color: C.amarillo,
     textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6,
   },
-  detalleTexto: { fontSize: 12, color: '#f87171', fontFamily: 'monospace', marginBottom: 8 },
-  stackTexto: { fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' },
+  detalleTexto: { fontSize: 12, color: C.rojo, fontFamily: 'monospace', marginBottom: 8 },
+  stackTexto: { fontSize: 10, color: C.subtexto, fontFamily: 'monospace' },
 });

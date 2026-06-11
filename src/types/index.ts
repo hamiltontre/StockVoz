@@ -20,13 +20,20 @@ export interface Categoria {
   creado_en: string;
 }
 
+export type UnidadProducto =
+  | 'unidad' | 'caja' | 'docena' | 'libra'
+  | 'litro' | 'metro' | 'par' | 'paquete';
+
 export interface Producto {
   id: number;
   nombre: string;
   codigo_barras: string | null;
-  precio: number;          // en centavos para evitar errores de punto flotante
+  precio: number;            // precio de VENTA en centavos
+  precio_costo: number;      // precio de COMPRA en centavos — para calcular ganancia
   stock: number;
-  stock_minimo: number;    // alerta cuando baje de aquí
+  stock_minimo: number;      // alerta cuando baje de aquí
+  fecha_vencimiento: string | null; // ISO-8601 yyyy-mm-dd, null si no aplica
+  unidad: UnidadProducto;
   categoria_id: number | null;
   activo: boolean;
   creado_en: string;

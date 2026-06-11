@@ -230,7 +230,7 @@ export default function PantallaUsuarios() {
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View style={{ marginBottom: 14 }}>
-      <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <Text style={{ color: C.subtexto, fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {label}
       </Text>
       {children}
@@ -272,15 +272,15 @@ const s = StyleSheet.create({
   avatarTexto: { fontSize: 20, fontWeight: '700', color: C.fondo },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardNombre: { fontSize: 15, fontWeight: '600', color: C.texto },
-  tuBadge: { backgroundColor: '#1a3a1a', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  tuBadge: { backgroundColor: C.verdeClaro, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   tuBadgeTexto: { color: C.verde, fontSize: 10, fontWeight: '700' },
   cardRol: { fontSize: 12, color: C.subtexto, marginTop: 2 },
   cardAcceso: { fontSize: 11, color: C.borde, marginTop: 2 },
   btnCerrarSesion: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, margin: 20, padding: 14,
-    backgroundColor: '#3a0808', borderRadius: 14,
-    borderWidth: 1, borderColor: '#5a1010',
+    backgroundColor: C.rojoClaro, borderRadius: 14,
+    borderWidth: 1, borderColor: C.rojo,
   },
   btnCerrarSesionTexto: { color: C.rojo, fontWeight: '700', fontSize: 15 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
@@ -303,7 +303,7 @@ const s = StyleSheet.create({
     flex: 1, padding: 12, borderRadius: 10,
     borderWidth: 1, borderColor: C.borde, alignItems: 'center',
   },
-  rolChipActivo: { borderColor: C.acento, backgroundColor: '#0c2233' },
+  rolChipActivo: { borderColor: C.acento, backgroundColor: C.acentoSuave },
   rolChipTexto: { color: C.subtexto, fontWeight: '600', fontSize: 13 },
   rolChipTextoActivo: { color: C.acento },
   btnGuardar: {

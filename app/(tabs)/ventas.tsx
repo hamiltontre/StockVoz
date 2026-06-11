@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useVentas } from '../../src/hooks/useVentas';
 import { useVoz } from '../../src/hooks/useVoz';
+import { useSesion } from '../../src/context/SesionContext';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
 import { ModalRecibo } from '../../src/components/ModalRecibo';
@@ -28,7 +29,8 @@ export default function PantallaVentas() {
   const [buscarVisible, setBuscarVisible] = useState(false);
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
-  const { estado: estadoVoz, resultado: resultadoVoz, iniciarEscucha, detenerEscucha, limpiar } = useVoz();
+  const { sesion } = useSesion();
+  const { estado: estadoVoz, resultado: resultadoVoz, iniciarEscucha, detenerEscucha, limpiar, segundosRestantes } = useVoz();
 
   useEffect(() => {
     cargarRecientes();
@@ -89,6 +91,13 @@ export default function PantallaVentas() {
     0
   );
 
+  // Ganancia estimada — solo cuenta productos con precio_costo registrado
+  const gananciaCarrito = carrito.reduce(
+    (acc, i) => acc + (i.producto.precio - (i.producto.precio_costo ?? 0)) * i.cantidad,
+    0
+  );
+  const hayPreciosCosto = carrito.some((i) => (i.producto.precio_costo ?? 0) > 0);
+
   const cobrar = useCallback(async () => {
     if (!carrito.length) return;
     setProcesando(true);
@@ -148,13 +157,20 @@ export default function PantallaVentas() {
         <View style={s.bannerVoz}>
           {estadoVoz === 'error'
             ? <Ionicons name="alert-circle-outline" size={18} color={C.rojo} />
+            : estadoVoz === 'escuchando'
+            ? <Ionicons name="radio-button-on" size={18} color={C.acento} />
             : <ActivityIndicator size="small" color={C.acento} />
           }
-          <Text style={[s.bannerVozTexto, estadoVoz === 'error' && { color: C.rojo }]}>
-            {estadoVoz === 'escuchando' ? 'Escuchando... habla ahora'
-              : estadoVoz === 'procesando' ? 'Analizando respuesta...'
-              : 'Voz no disponible en Expo Go'}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.bannerVozTexto, estadoVoz === 'error' && { color: C.rojo }]}>
+              {estadoVoz === 'escuchando' ? 'Escuchando... habla ahora'
+                : estadoVoz === 'procesando' ? 'Buscando producto...'
+                : 'Voz no disponible en Expo Go'}
+            </Text>
+            {estadoVoz === 'escuchando' && segundosRestantes > 0 && (
+              <Text style={s.bannerVozSub}>{segundosRestantes}s · Di el nombre del producto</Text>
+            )}
+          </View>
           <TouchableOpacity onPress={() => { detenerEscucha(); limpiar(); }} style={s.bannerBtnStop}>
             <Ionicons name="close-circle" size={20} color={C.subtexto} />
           </TouchableOpacity>
@@ -220,6 +236,13 @@ export default function PantallaVentas() {
             <Text style={s.totalMonto}>{centavosACordobas(totalCarrito)}</Text>
           </View>
 
+          {hayPreciosCosto && (
+            <View style={s.gananciaRow}>
+              <Text style={s.gananciaLabel}>Ganancia estimada</Text>
+              <Text style={s.gananciaMonto}>{centavosACordobas(gananciaCarrito)}</Text>
+            </View>
+          )}
+
           <TouchableOpacity
             style={[s.botonCobrar, procesando && s.botonCobrarDeshabilitado]}
             onPress={cobrar}
@@ -245,6 +268,7 @@ export default function PantallaVentas() {
         venta={ventaRecibo}
         visible={reciboVisible}
         onCerrar={() => { setReciboVisible(false); setVentaRecibo(null); }}
+        esAdmin={sesion?.usuario.rol === 'admin'}
       />
     </SafeAreaView>
   );
@@ -287,15 +311,24 @@ const s = StyleSheet.create({
   bannerVoz: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0c2233',
+    backgroundColor: C.acentoSuave,
     marginHorizontal: 20,
     marginBottom: 8,
     borderRadius: 10,
     padding: 10,
     gap: 10,
   },
-  bannerVozTexto: { color: C.acento, fontSize: 14, fontWeight: '600', flex: 1 },
+  bannerVozTexto: { color: C.acentoTexto, fontSize: 14, fontWeight: '600' },
+  bannerVozSub: { color: C.subtexto, fontSize: 11, marginTop: 2 },
   bannerBtnStop: { padding: 2 },
+  gananciaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: -6,
+  },
+  gananciaLabel: { fontSize: 13, color: C.subtexto },
+  gananciaMonto: { fontSize: 16, fontWeight: '700', color: C.verde },
   lista: { paddingHorizontal: 20, paddingBottom: 8, flexGrow: 1 },
   vacio: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 8 },
   vacioTexto: { fontSize: 16, color: C.subtexto, fontWeight: '600' },
