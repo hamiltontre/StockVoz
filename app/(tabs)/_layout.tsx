@@ -2,33 +2,27 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { IndicadorConectividad } from '../../src/components/IndicadorConectividad';
-import { useStockBajo } from '../../src/hooks/useStockBajo';
-
-const COLORES = {
-  fondo: '#0f172a',
-  tarjeta: '#1e293b',
-  activo: '#38bdf8',
-  inactivo: '#475569',
-};
+import { useAlertas } from '../../src/hooks/useAlertas';
+import { COLORES as C } from '../../src/theme/colors';
 
 export default function TabsLayout() {
-  const { cantidad: stockBajoCantidad } = useStockBajo();
+  const { totalAlertas } = useAlertas();
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORES.fondo }}>
+    <View style={{ flex: 1, backgroundColor: C.fondo }}>
       <IndicadorConectividad />
       <Tabs
         screenOptions={{
           headerShown: false,
           tabBarStyle: {
-            backgroundColor: COLORES.tarjeta,
-            borderTopColor: '#334155',
+            backgroundColor: C.tarjeta,
+            borderTopColor: C.borde,
             borderTopWidth: 1,
             height: 60,
             paddingBottom: 8,
           },
-          tabBarActiveTintColor: COLORES.activo,
-          tabBarInactiveTintColor: COLORES.inactivo,
+          tabBarActiveTintColor: C.acento,
+          tabBarInactiveTintColor: C.textoTenue,
           tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         }}
       >
@@ -46,12 +40,21 @@ export default function TabsLayout() {
           options={{
             title: 'Inventario',
             tabBarIcon: ({ color, size }) => (
+              <Ionicons name="cube-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="alertas"
+          options={{
+            title: 'Alertas',
+            tabBarIcon: ({ color, size }) => (
               <View>
-                <Ionicons name="cube-outline" size={size} color={color} />
-                {stockBajoCantidad > 0 && (
+                <Ionicons name="notifications-outline" size={size} color={color} />
+                {totalAlertas > 0 && (
                   <View style={ts.badge}>
                     <Text style={ts.badgeTexto}>
-                      {stockBajoCantidad > 9 ? '9+' : stockBajoCantidad}
+                      {totalAlertas > 9 ? '9+' : totalAlertas}
                     </Text>
                   </View>
                 )}
@@ -76,9 +79,9 @@ export default function TabsLayout() {
 const ts = StyleSheet.create({
   badge: {
     position: 'absolute', top: -4, right: -6,
-    backgroundColor: '#f87171', borderRadius: 8,
+    backgroundColor: C.rojo, borderRadius: 8,
     minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 3,
   },
-  badgeTexto: { color: '#0f172a', fontSize: 9, fontWeight: '800' },
+  badgeTexto: { color: '#FFFFFF', fontSize: 9, fontWeight: '800' },
 });

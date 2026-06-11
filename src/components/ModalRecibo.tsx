@@ -133,7 +133,7 @@ StockVoz
               {venta.descuento > 0 && (
                 <View style={s.totalFila}>
                   <Text style={s.totalLabel}>Descuento</Text>
-                  <Text style={[s.totalValor, { color: '#f87171' }]}>
+                  <Text style={[s.totalValor, { color: C.rojo }]}>
                     -{centavosACordobas(venta.descuento)}
                   </Text>
                 </View>

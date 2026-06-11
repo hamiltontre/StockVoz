@@ -29,6 +29,21 @@ export default function PantallaLogin() {
     });
   }, []);
 
+  // Tick cada segundo mientras hay bloqueo — sin esto el contador
+  // queda congelado porque nada fuerza un re-render.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!bloqueadoHasta) return;
+    const interval = setInterval(() => {
+      if (Date.now() >= bloqueadoHasta) {
+        setBloqueadoHasta(null);
+      } else {
+        setTick((t) => t + 1);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [bloqueadoHasta]);
+
   const estaBloqueado = bloqueadoHasta !== null && Date.now() < bloqueadoHasta;
   const segundosBloqueo = bloqueadoHasta
     ? Math.ceil((bloqueadoHasta - Date.now()) / 1000)

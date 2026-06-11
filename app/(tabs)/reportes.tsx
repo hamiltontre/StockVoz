@@ -56,21 +56,28 @@ export default function PantallaReportes() {
   const [topProductos, setTopProductos] = useState<ProductoTop[]>([]);
   const [metodosPago, setMetodosPago] = useState<MetodoPago[]>([]);
   const [stockBajo, setStockBajo] = useState<Producto[]>([]);
+  const [rentabilidad, setRentabilidad] = useState<{
+    ganancia_total: number;
+    margen_promedio: number;
+    productos_sin_costo: number;
+  } | null>(null);
   const [cargandoMetricas, setCargandoMetricas] = useState(true);
   const [vista, setVista] = useState<'resumen' | 'historial'>('resumen');
 
   const cargarMetricas = useCallback(async () => {
     setCargandoMetricas(true);
-    const [resumenR, topR, metodosR, stockR] = await Promise.all([
+    const [resumenR, topR, metodosR, stockR, rentR] = await Promise.all([
       VentaRepository.resumenPeriodo(periodo),
       VentaRepository.productosMasVendidos(5),
       VentaRepository.ventasPorMetodoPago(),
       ProductoRepository.obtenerStockBajo(),
+      ProductoRepository.obtenerRentabilidad(periodo),
     ]);
     if (resumenR.ok) setMetricas(resumenR.data);
     if (topR.ok) setTopProductos(topR.data);
     if (metodosR.ok) setMetodosPago(metodosR.data);
     if (stockR.ok) setStockBajo(stockR.data);
+    if (rentR.ok) setRentabilidad(rentR.data);
     setCargandoMetricas(false);
   }, [periodo]);
 
@@ -204,6 +211,39 @@ export default function PantallaReportes() {
                   icono="close-circle-outline" color={C.rojo}
                 />
               </View>
+
+              {/* Rentabilidad */}
+              {rentabilidad && (
+                <>
+                  <Text style={[s.seccionLabel, { marginTop: 16 }]}>
+                    RENTABILIDAD ({periodo === 7 ? '7 días' : '30 días'})
+                  </Text>
+                  <View style={s.card}>
+                    <View style={s.rentabilidadFila}>
+                      <View style={s.rentabilidadItem}>
+                        <Text style={[s.metricaValor, { color: C.verde }]}>
+                          {centavosACordobas(rentabilidad.ganancia_total)}
+                        </Text>
+                        <Text style={s.metricaLabel}>Ganancia bruta</Text>
+                      </View>
+                      <View style={s.rentabilidadItem}>
+                        <Text style={[s.metricaValor, { color: C.acento }]}>
+                          {rentabilidad.margen_promedio}%
+                        </Text>
+                        <Text style={s.metricaLabel}>Margen promedio</Text>
+                      </View>
+                    </View>
+                    {rentabilidad.productos_sin_costo > 0 && (
+                      <View style={s.alertaSinCosto}>
+                        <Ionicons name="warning-outline" size={14} color={C.amarillo} />
+                        <Text style={s.alertaSinCostoTexto}>
+                          {rentabilidad.productos_sin_costo} producto{rentabilidad.productos_sin_costo !== 1 ? 's' : ''} sin precio de costo — la ganancia puede ser imprecisa
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </>
+              )}
 
               {/* Métodos de pago */}
               {metodosPago.length > 0 && (
@@ -420,12 +460,19 @@ const s = StyleSheet.create({
     padding: 14, marginBottom: 10, borderWidth: 1, borderColor: C.borde,
   },
   metodoBadge: {
-    backgroundColor: '#0c2233', paddingHorizontal: 8,
+    backgroundColor: C.acentoSuave, paddingHorizontal: 8,
     paddingVertical: 3, borderRadius: 6,
   },
   metodoBadgeTexto: { color: C.acento, fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
   anuladaBadge: {
-    backgroundColor: '#3a0808', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+    backgroundColor: C.rojoClaro, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
   },
   anuladaTexto: { color: C.rojo, fontSize: 10, fontWeight: '800' },
+  rentabilidadFila: { flexDirection: 'row', padding: 14, gap: 12 },
+  rentabilidadItem: { flex: 1, gap: 4 },
+  alertaSinCosto: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: C.amarilloClaro, paddingHorizontal: 14, paddingVertical: 8,
+  },
+  alertaSinCostoTexto: { flex: 1, fontSize: 11, color: C.amarillo, fontWeight: '600' },
 });

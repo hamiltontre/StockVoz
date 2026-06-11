@@ -201,7 +201,7 @@ export default function PantallaSetup() {
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <Text style={{ color: C.subtexto, fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {label}
       </Text>
       {children}
