@@ -140,8 +140,22 @@ export default function PantallaInventario() {
       Alert.alert('Error', 'El nombre del producto es requerido');
       return;
     }
-    const precio = cordobasACentavos(parseFloat(precioTexto) || 0);
-    const precio_costo = cordobasACentavos(parseFloat(precioCostoTexto) || 0);
+    if (!precioTexto.trim()) {
+      Alert.alert('Error', 'El precio de venta es requerido');
+      return;
+    }
+    const precioNum = parseFloat(precioTexto);
+    if (isNaN(precioNum)) {
+      Alert.alert('Error', 'El precio debe ser un número válido');
+      return;
+    }
+    const precioCostoNum = precioCostoTexto.trim() ? parseFloat(precioCostoTexto) : 0;
+    if (precioCostoNum > 0 && isNaN(precioCostoNum)) {
+      Alert.alert('Error', 'El precio de costo debe ser un número válido');
+      return;
+    }
+    const precio = cordobasACentavos(precioNum);
+    const precio_costo = cordobasACentavos(precioCostoNum);
     const fecha_vencimiento = parseFechaVenc(fechaVencTexto);
     if (fechaVencTexto.trim() && !fecha_vencimiento) {
       Alert.alert('Fecha inválida', 'Usa el formato DD/MM/AAAA, ej: 11/06/2027');
