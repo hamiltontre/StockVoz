@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { SyncRepository } from './SyncRepository';
 import { bus, EVENTOS } from '../../utils/eventos';
 import { normalizarTexto } from '../../utils/texto';
 import type {
@@ -113,9 +114,12 @@ export const ProductoRepository = {
         'SELECT * FROM productos WHERE id = ?',
         [result.lastInsertRowId]
       );
+      const producto = rowToProducto(created!);
+      // Fire-and-forget: si falla encolar, el producto ya está guardado local
+      SyncRepository.encolar('productos', 'INSERT', producto).catch(() => {});
       bus.emit(EVENTOS.PRODUCTO_CAMBIO);
       bus.emit(EVENTOS.STOCK_CAMBIO);
-      return { ok: true, data: rowToProducto(created!) };
+      return { ok: true, data: producto };
     } catch (e) {
       return { ok: false, error: String(e) };
     }
@@ -168,9 +172,11 @@ export const ProductoRepository = {
         [id]
       );
       if (!updated) return { ok: false, error: 'Producto no encontrado' };
+      const producto = rowToProducto(updated);
+      SyncRepository.encolar('productos', 'UPDATE', producto).catch(() => {});
       bus.emit(EVENTOS.PRODUCTO_CAMBIO);
       bus.emit(EVENTOS.STOCK_CAMBIO);
-      return { ok: true, data: rowToProducto(updated) };
+      return { ok: true, data: producto };
     } catch (e) {
       return { ok: false, error: String(e) };
     }
@@ -183,6 +189,8 @@ export const ProductoRepository = {
         "UPDATE productos SET activo = 0, actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
         [id]
       );
+      // El backend interpreta DELETE como desactivar (activo = false)
+      SyncRepository.encolar('productos', 'DELETE', { id }).catch(() => {});
       bus.emit(EVENTOS.PRODUCTO_CAMBIO);
       bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: undefined };
@@ -205,6 +213,13 @@ export const ProductoRepository = {
         "UPDATE productos SET stock = stock + ?, actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
         [cantidad, id]
       );
+      const ajustado = await db.getFirstAsync<Record<string, unknown>>(
+        'SELECT * FROM productos WHERE id = ?',
+        [id]
+      );
+      if (ajustado) {
+        SyncRepository.encolar('productos', 'UPDATE', rowToProducto(ajustado)).catch(() => {});
+      }
       bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: undefined };
     } catch (e) {
