@@ -110,11 +110,17 @@ export const ProductoRepository = {
           dto.categoria_id ?? null,
         ]
       );
+      if (!result.lastInsertRowId) {
+        return { ok: false, error: 'Error al crear el producto (sin ID)' };
+      }
       const created = await db.getFirstAsync<Record<string, unknown>>(
         'SELECT * FROM productos WHERE id = ?',
         [result.lastInsertRowId]
       );
-      const producto = rowToProducto(created!);
+      if (!created) {
+        return { ok: false, error: 'Error al recuperar el producto creado' };
+      }
+      const producto = rowToProducto(created);
       // Fire-and-forget: si falla encolar, el producto ya está guardado local
       SyncRepository.encolar('productos', 'INSERT', producto).catch(() => {});
       bus.emit(EVENTOS.PRODUCTO_CAMBIO);

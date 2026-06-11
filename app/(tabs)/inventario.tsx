@@ -51,7 +51,7 @@ export default function PantallaInventario() {
   const [form, setForm] = useState<CrearProductoDTO>(VACIO_DTO);
   const [precioTexto, setPrecioTexto] = useState('');
   const [precioCostoTexto, setPrecioCostoTexto] = useState('');
-  const [fechaVencTexto, setFechaVencTexto] = useState(''); // formato MM/AAAA
+  const [fechaVencTexto, setFechaVencTexto] = useState(''); // formato DD/MM/AAAA
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => { cargar(); }, [cargar]);
@@ -88,10 +88,10 @@ export default function PantallaInventario() {
     });
     setPrecioTexto((producto.precio / 100).toFixed(2));
     setPrecioCostoTexto(producto.precio_costo > 0 ? (producto.precio_costo / 100).toFixed(2) : '');
-    // ISO yyyy-mm-dd → MM/AAAA
+    // ISO yyyy-mm-dd → DD/MM/AAAA
     if (producto.fecha_vencimiento) {
-      const [yyyy, mm] = producto.fecha_vencimiento.split('-');
-      setFechaVencTexto(`${mm}/${yyyy}`);
+      const [yyyy, mm, dd] = producto.fecha_vencimiento.split('-');
+      setFechaVencTexto(`${dd}/${mm}/${yyyy}`);
     } else {
       setFechaVencTexto('');
     }
@@ -99,20 +99,22 @@ export default function PantallaInventario() {
   };
 
   /**
-   * MM/AAAA → ISO yyyy-mm-dd (último día del mes).
+   * DD/MM/AAAA → ISO yyyy-mm-dd.
    * Devuelve null si el formato no es válido.
    */
   const parseFechaVenc = (texto: string): string | null => {
     const limpio = texto.trim();
     if (!limpio) return null;
-    const match = limpio.match(/^(\d{2})\/(\d{4})$/);
+    const match = limpio.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (!match) return null;
-    const mm = parseInt(match[1], 10);
-    const yyyy = parseInt(match[2], 10);
-    if (mm < 1 || mm > 12 || yyyy < 2020 || yyyy > 2099) return null;
-    // Último día del mes
-    const ultDia = new Date(yyyy, mm, 0).getDate();
-    return `${yyyy}-${String(mm).padStart(2, '0')}-${String(ultDia).padStart(2, '0')}`;
+    const dd = parseInt(match[1], 10);
+    const mm = parseInt(match[2], 10);
+    const yyyy = parseInt(match[3], 10);
+    if (dd < 1 || dd > 31 || mm < 1 || mm > 12 || yyyy < 2020 || yyyy > 2099) return null;
+    // Validar que el día existe en ese mes
+    const fecha = new Date(yyyy, mm - 1, dd);
+    if (fecha.getMonth() !== mm - 1 || fecha.getDate() !== dd) return null;
+    return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
   };
 
   const confirmarEliminar = (producto: Producto) => {
@@ -142,7 +144,7 @@ export default function PantallaInventario() {
     const precio_costo = cordobasACentavos(parseFloat(precioCostoTexto) || 0);
     const fecha_vencimiento = parseFechaVenc(fechaVencTexto);
     if (fechaVencTexto.trim() && !fecha_vencimiento) {
-      Alert.alert('Fecha inválida', 'Usa el formato MM/AAAA, ej: 03/2027');
+      Alert.alert('Fecha inválida', 'Usa el formato DD/MM/AAAA, ej: 11/06/2027');
       return;
     }
     if (precio_costo > 0 && precio > 0 && precio < precio_costo) {
@@ -345,7 +347,7 @@ export default function PantallaInventario() {
             <Campo label="Vencimiento (opcional)">
               <TextInput
                 style={s.input}
-                placeholder="MM/AAAA — ej: 03/2027"
+                placeholder="DD/MM/AAAA — ej: 11/06/2027"
                 placeholderTextColor={C.subtexto}
                 keyboardType="number-pad"
                 maxLength={7}

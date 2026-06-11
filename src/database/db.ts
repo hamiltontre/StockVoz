@@ -170,13 +170,17 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
 ];
 
 /**
- * Una migración interrumpida (reload de Metro, crash, batería) puede dejar
- * columnas ya creadas sin haber registrado la versión. Al reintentar, el
- * ALTER TABLE falla con "duplicate column name" — eso no es un error real,
- * es la mitad ya aplicada de la misma migración.
+ * Verifica si una columna existe en una tabla.
  */
-function esColumnaDuplicada(e: unknown): boolean {
-  return String(e).toLowerCase().includes('duplicate column name');
+async function columnExiste(db: SQLite.SQLiteDatabase, tabla: string, columna: string): Promise<boolean> {
+  try {
+    const info = await db.getAllAsync<{ name: string }>(
+      `PRAGMA table_info(${tabla})`
+    );
+    return info.some((col) => col.name === columna);
+  } catch {
+    return false;
+  }
 }
 
 async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -186,20 +190,28 @@ async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {
   for (const migracion of MIGRACIONES) {
     if (versionActual >= migracion.version) continue;
 
-    // Transacción por migración: o se aplica completa (incluida la versión)
-    // o no se aplica nada. Sin esto, un reload a mitad de camino deja la DB
-    // en un estado intermedio irrecuperable.
-    await db.withTransactionAsync(async () => {
-      for (const sql of migracion.sentencias) {
-        try {
+    try {
+      await db.withTransactionAsync(async () => {
+        for (const sql of migracion.sentencias) {
+          // Saltar ALTERs de columnas que ya existen (migración interrumpida)
+          if (sql.includes('ALTER TABLE')) {
+            const addColMatch = sql.match(/ALTER TABLE (\w+) ADD COLUMN (\w+)/i);
+            if (addColMatch) {
+              const [, tabla, columna] = addColMatch;
+              if (await columnExiste(db, tabla, columna)) {
+                console.log(`[DB] Columna ${tabla}.${columna} ya existe, saltando`);
+                continue;
+              }
+            }
+          }
           await db.runAsync(sql);
-        } catch (e) {
-          if (esColumnaDuplicada(e)) continue; // repara DBs que quedaron a medias
-          throw e;
         }
-      }
-      await db.runAsync(`PRAGMA user_version = ${migracion.version}`);
-    });
+        await db.runAsync(`PRAGMA user_version = ${migracion.version}`);
+      });
+    } catch (e) {
+      console.warn(`[DB] Migración v${migracion.version} error:`, String(e));
+      throw e;
+    }
     versionActual = migracion.version;
   }
 }
