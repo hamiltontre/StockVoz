@@ -93,14 +93,6 @@ export const ProductoRepository = {
       }
 
       const db = await getDb();
-      console.log('[ProductoRepository.crear] INSERT con:', {
-        nombre: dto.nombre,
-        precio: dto.precio,
-        precio_costo: dto.precio_costo,
-        stock: dto.stock,
-        fecha_vencimiento: dto.fecha_vencimiento,
-        unidad: dto.unidad,
-      });
       const result = await db.runAsync(
         `INSERT INTO productos
            (nombre, codigo_barras, precio, precio_costo, stock, stock_minimo,
@@ -118,7 +110,6 @@ export const ProductoRepository = {
           dto.categoria_id ?? null,
         ]
       );
-      console.log('[ProductoRepository.crear] INSERT exitoso, ID:', result.lastInsertRowId);
       if (!result.lastInsertRowId) {
         return { ok: false, error: 'Error al crear el producto (sin ID)' };
       }
@@ -126,12 +117,10 @@ export const ProductoRepository = {
         'SELECT * FROM productos WHERE id = ?',
         [result.lastInsertRowId]
       );
-      console.log('[ProductoRepository.crear] SELECT exitoso:', !!created);
       if (!created) {
         return { ok: false, error: 'Error al recuperar el producto creado' };
       }
       const producto = rowToProducto(created);
-      console.log('[ProductoRepository.crear] Producto mapeado:', producto.nombre);
       // Fire-and-forget: si falla encolar, el producto ya está guardado local
       SyncRepository.encolar('productos', 'INSERT', producto).catch(() => {});
       bus.emit(EVENTOS.PRODUCTO_CAMBIO);
