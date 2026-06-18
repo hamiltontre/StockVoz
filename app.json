@@ -47,6 +47,12 @@
           "speechRecognitionPermission": "StockVoz necesita reconocimiento de voz para registrar ventas sin tocar la pantalla"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "45bc28c2-6b52-46d1-b043-6f4e8031b159"
+      }
+    }
   }
 }

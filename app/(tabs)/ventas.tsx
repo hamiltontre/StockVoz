@@ -186,7 +186,7 @@ export default function PantallaVentas() {
           <View style={s.vacio}>
             <Ionicons name="cart-outline" size={48} color={C.borde} />
             <Text style={s.vacioTexto}>Carrito vacío</Text>
-            <Text style={s.vacioSub}>Usa el micrófono o ve a Inventario para agregar</Text>
+            <Text style={s.vacioSub}>Presiona 🔍 para buscar, 🎤 para voz, o ve a Inventario</Text>
           </View>
         }
         renderItem={({ item }) => (
