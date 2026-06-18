@@ -93,22 +93,24 @@ export const ProductoRepository = {
       }
 
       const db = await getDb();
+      const params = [
+        dto.nombre.trim(),
+        dto.codigo_barras ?? null,
+        dto.precio,
+        dto.precio_costo ?? 0,
+        dto.stock,
+        dto.stock_minimo ?? 1,
+        dto.fecha_vencimiento ?? null,
+        dto.unidad ?? 'unidad',
+        dto.categoria_id ?? null,
+      ];
+      console.log('[ProductoRepository.crear] Parámetros:', params);
       const result = await db.runAsync(
         `INSERT INTO productos
            (nombre, codigo_barras, precio, precio_costo, stock, stock_minimo,
             fecha_vencimiento, unidad, categoria_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          dto.nombre.trim(),
-          dto.codigo_barras ?? null,
-          dto.precio,
-          dto.precio_costo ?? 0,
-          dto.stock,
-          dto.stock_minimo,
-          dto.fecha_vencimiento ?? null,
-          dto.unidad ?? 'unidad',
-          dto.categoria_id ?? null,
-        ]
+        params
       );
       if (!result.lastInsertRowId) {
         return { ok: false, error: 'Error al crear el producto (sin ID)' };
