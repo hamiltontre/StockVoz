@@ -217,18 +217,9 @@ export default function PantallaVentas() {
       {/* Footer de cobro */}
       {carrito.length > 0 && (
         <View style={s.footer}>
+          {/* Plan básico: solo efectivo */}
           <View style={s.metodosPago}>
-            {(['efectivo', 'tarjeta', 'transferencia'] as MetodoPago[]).map((m) => (
-              <TouchableOpacity
-                key={m}
-                style={[s.chipMetodo, metodoPago === m && s.chipMetodoActivo]}
-                onPress={() => setMetodoPago(m)}
-              >
-                <Text style={[s.chipMetodoTexto, metodoPago === m && s.chipMetodoTextoActivo]}>
-                  {m.charAt(0).toUpperCase() + m.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <Text style={s.metodoLabel}>Método de pago: Efectivo</Text>
           </View>
 
           <View style={s.totalRow}>
@@ -363,7 +354,8 @@ const s = StyleSheet.create({
     padding: 20,
     gap: 12,
   },
-  metodosPago: { flexDirection: 'row', gap: 8 },
+  metodosPago: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  metodoLabel: { fontSize: 14, color: C.subtexto, fontWeight: '600' },
   chipMetodo: {
     paddingHorizontal: 14,
     paddingVertical: 7,

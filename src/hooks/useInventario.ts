@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
+import { bus, EVENTOS } from '../utils/eventos';
 import type { Producto, CrearProductoDTO, ActualizarProductoDTO } from '../types';
 
 export function useInventario() {
@@ -18,6 +19,12 @@ export function useInventario() {
     }
     setCargando(false);
   }, []);
+
+  // Recargar inventario cuando hay cambios de stock (ej: después de una venta)
+  useEffect(() => {
+    const unsubscribe = bus.on(EVENTOS.STOCK_CAMBIO, cargar);
+    return unsubscribe;
+  }, [cargar]);
 
   const buscar = useCallback(async (termino: string) => {
     if (!termino.trim()) {
