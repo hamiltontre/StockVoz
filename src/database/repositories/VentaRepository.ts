@@ -53,7 +53,8 @@ export const VentaRepository = {
       const db = await getDb();
       let ventaCreada: VentaConDetalle | null = null;
 
-      await db.withTransactionAsync(async () => {
+      await db.runAsync('BEGIN');
+      try {
         const subtotalBruto = dto.items.reduce(
           (acc, item) => acc + item.producto.precio * item.cantidad,
           0
@@ -70,7 +71,6 @@ export const VentaRepository = {
         const detalles: DetalleVenta[] = [];
 
         for (const item of dto.items) {
-          // Verificar stock dentro de la transacción
           const stockRow = await db.getFirstAsync<{ stock: number }>(
             'SELECT stock FROM productos WHERE id = ? AND activo = 1',
             [item.producto.id]
@@ -90,7 +90,6 @@ export const VentaRepository = {
             [ventaId, item.producto.id, item.producto.nombre, item.cantidad, item.producto.precio, subtotal]
           );
 
-          // Descontar stock
           await db.runAsync(
             "UPDATE productos SET stock = stock - ?, actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
             [item.cantidad, item.producto.id]
@@ -112,7 +111,11 @@ export const VentaRepository = {
           [ventaId]
         );
         ventaCreada = { ...rowToVenta(ventaRow!), items: detalles };
-      });
+        await db.runAsync('COMMIT');
+      } catch (inner) {
+        try { await db.runAsync('ROLLBACK'); } catch {}
+        throw inner;
+      }
 
       // Encolar para sincronización (fire-and-forget, no bloquea la venta)
       if (ventaCreada) {
@@ -133,7 +136,8 @@ export const VentaRepository = {
     try {
       const db = await getDb();
 
-      await db.withTransactionAsync(async () => {
+      await db.runAsync('BEGIN');
+      try {
         const venta = await db.getFirstAsync<{ estado: string }>(
           'SELECT estado FROM ventas WHERE id = ?',
           [id]
@@ -146,7 +150,6 @@ export const VentaRepository = {
           [id]
         );
 
-        // Revertir stock
         for (const d of detalles) {
           await db.runAsync(
             "UPDATE productos SET stock = stock + ?, actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
@@ -158,7 +161,11 @@ export const VentaRepository = {
           "UPDATE ventas SET estado = 'anulada' WHERE id = ?",
           [id]
         );
-      });
+        await db.runAsync('COMMIT');
+      } catch (inner) {
+        try { await db.runAsync('ROLLBACK'); } catch {}
+        throw inner;
+      }
 
       bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: undefined };

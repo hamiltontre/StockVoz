@@ -86,6 +86,13 @@ export const ProductoRepository = {
   async crear(dto: CrearProductoDTO): Promise<Result<Producto>> {
     try {
       if (!dto.nombre?.trim()) return { ok: false, error: 'El nombre es requerido' };
+      // Guard contra NaN/Infinity: SQLite los rechaza en columnas NOT NULL
+      // y rompe prepareAsync en Android. Validamos ANTES de tocar la base.
+      if (!Number.isFinite(dto.precio)) return { ok: false, error: 'El precio debe ser un número válido' };
+      if (!Number.isFinite(dto.stock)) return { ok: false, error: 'El stock debe ser un número válido' };
+      if (dto.precio_costo != null && !Number.isFinite(dto.precio_costo)) {
+        return { ok: false, error: 'El precio de costo debe ser un número válido' };
+      }
       if (dto.precio < 0) return { ok: false, error: 'El precio no puede ser negativo' };
       if (dto.stock < 0) return { ok: false, error: 'El stock no puede ser negativo' };
       if (dto.precio_costo != null && dto.precio_costo < 0) {

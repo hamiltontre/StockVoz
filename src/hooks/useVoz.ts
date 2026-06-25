@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { NativeModules } from 'react-native';
+import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
 import { normalizarTexto } from '../utils/texto';
 import type { Producto } from '../types';
@@ -27,6 +27,34 @@ function getVoice() {
     return require('@react-native-voice/voice').default;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Pide el permiso de micrófono en Android. @react-native-voice NO lo solicita
+ * solo al llamar start(), así que sin esto la voz falla silenciosamente en
+ * dispositivos donde el usuario aún no lo concedió.
+ * Devuelve true si el permiso quedó concedido.
+ */
+async function asegurarPermisoMicrofono(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  try {
+    const yaConcedido = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+    );
+    if (yaConcedido) return true;
+    const resultado = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      {
+        title: 'Permiso de micrófono',
+        message: 'StockVoz necesita el micrófono para registrar ventas por voz.',
+        buttonPositive: 'Permitir',
+        buttonNegative: 'Cancelar',
+      }
+    );
+    return resultado === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
   }
 }
 
@@ -209,6 +237,13 @@ export function useVoz() {
     const Voice = getVoice();
     if (!Voice) {
       setErrorMensaje('Voz no disponible. Se necesita development build.');
+      setEstado('error');
+      setTimeout(() => setEstado('inactivo'), 4000);
+      return;
+    }
+    const permiso = await asegurarPermisoMicrofono();
+    if (!permiso) {
+      setErrorMensaje('Activa el permiso de micrófono para usar la voz');
       setEstado('error');
       setTimeout(() => setEstado('inactivo'), 4000);
       return;

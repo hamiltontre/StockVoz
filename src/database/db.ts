@@ -4,9 +4,22 @@ let _db: SQLite.SQLiteDatabase | null = null;
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (_db) return _db;
-  _db = await SQLite.openDatabaseAsync('stockvoz.db');
-  await configurarPragmas(_db);
-  await correrMigraciones(_db);
+  // Inicializamos sobre una variable local y solo asignamos al singleton
+  // _db cuando TODO salió bien. Si configurarPragmas o las migraciones
+  // fallan, no dejamos una conexión a medio configurar cacheada (eso
+  // "envenena" todas las llamadas siguientes con errores de transacción).
+  const db = await SQLite.openDatabaseAsync('stockvoz.db');
+  try {
+    await configurarPragmas(db);
+    await correrMigraciones(db);
+    // Consolidar el WAL en el archivo principal para que no crezca sin
+    // límite tras muchas migraciones/escrituras.
+    try { await db.runAsync('PRAGMA wal_checkpoint(TRUNCATE)'); } catch {}
+  } catch (e) {
+    try { await db.closeAsync(); } catch {}
+    throw e;
+  }
+  _db = db;
   return _db;
 }
 
@@ -191,23 +204,29 @@ async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {
     if (versionActual >= migracion.version) continue;
 
     try {
-      await db.withTransactionAsync(async () => {
+      // Usamos runAsync para BEGIN/COMMIT/ROLLBACK (no withTransactionAsync ni execAsync)
+      // porque execAsync abre transacciones implícitas que chocan con las explícitas en Android
+      await db.runAsync('BEGIN');
+      try {
         for (const sql of migracion.sentencias) {
-          // Saltar ALTERs de columnas que ya existen (migración interrumpida)
           if (sql.includes('ALTER TABLE')) {
             const addColMatch = sql.match(/ALTER TABLE (\w+) ADD COLUMN (\w+)/i);
             if (addColMatch) {
               const [, tabla, columna] = addColMatch;
               if (await columnExiste(db, tabla, columna)) {
-                console.log(`[DB] Columna ${tabla}.${columna} ya existe, saltando`);
                 continue;
               }
             }
           }
           await db.runAsync(sql);
         }
-        await db.runAsync(`PRAGMA user_version = ${migracion.version}`);
-      });
+        await db.runAsync('COMMIT');
+      } catch (inner) {
+        try { await db.runAsync('ROLLBACK'); } catch {}
+        throw inner;
+      }
+      // PRAGMA user_version siempre fuera de transacción
+      await db.runAsync(`PRAGMA user_version = ${migracion.version}`);
     } catch (e) {
       console.warn(`[DB] Migración v${migracion.version} error:`, String(e));
       throw e;

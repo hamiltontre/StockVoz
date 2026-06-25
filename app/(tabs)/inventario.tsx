@@ -150,7 +150,7 @@ export default function PantallaInventario() {
       return;
     }
     const precioCostoNum = precioCostoTexto.trim() ? parseFloat(precioCostoTexto) : 0;
-    if (precioCostoNum > 0 && isNaN(precioCostoNum)) {
+    if (isNaN(precioCostoNum)) {
       Alert.alert('Error', 'El precio de costo debe ser un número válido');
       return;
     }

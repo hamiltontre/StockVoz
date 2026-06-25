@@ -30,7 +30,7 @@ export default function PantallaVentas() {
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
   const { sesion } = useSesion();
-  const { estado: estadoVoz, resultado: resultadoVoz, iniciarEscucha, detenerEscucha, limpiar, segundosRestantes } = useVoz();
+  const { estado: estadoVoz, resultado: resultadoVoz, errorMensaje: errorVoz, iniciarEscucha, detenerEscucha, limpiar, segundosRestantes } = useVoz();
 
   useEffect(() => {
     cargarRecientes();
@@ -165,7 +165,7 @@ export default function PantallaVentas() {
             <Text style={[s.bannerVozTexto, estadoVoz === 'error' && { color: C.rojo }]}>
               {estadoVoz === 'escuchando' ? 'Escuchando... habla ahora'
                 : estadoVoz === 'procesando' ? 'Buscando producto...'
-                : 'Voz no disponible en Expo Go'}
+                : (errorVoz ?? 'Voz no disponible')}
             </Text>
             {estadoVoz === 'escuchando' && segundosRestantes > 0 && (
               <Text style={s.bannerVozSub}>{segundosRestantes}s · Di el nombre del producto</Text>
