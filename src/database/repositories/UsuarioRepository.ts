@@ -56,9 +56,10 @@ export const UsuarioRepository = {
       const pinError = validarPin(dto.pin);
       if (pinError) return { ok: false, error: pinError };
 
+      const db = await getDb();
+
       // Solo puede haber un admin
       if (dto.rol === 'admin') {
-        const db = await getDb();
         const adminExiste = await db.getFirstAsync<{ count: number }>(
           "SELECT COUNT(*) as count FROM usuarios WHERE negocio_id = ? AND rol = 'admin' AND activo = 1",
           [NEGOCIO_ID]
@@ -68,8 +69,7 @@ export const UsuarioRepository = {
         }
       }
 
-      const db = await getDb();
-      const salt = generarSalt();
+      const salt = await generarSalt();
       const result = await db.runAsync(
         'INSERT INTO usuarios (negocio_id, nombre, rol, pin_hash, salt) VALUES (?, ?, ?, ?, ?)',
         [NEGOCIO_ID, dto.nombre.trim(), dto.rol, hashPin(dto.pin, salt), salt]
@@ -100,7 +100,7 @@ export const UsuarioRepository = {
       }
 
       // Generar NUEVO salt al cambiar el PIN (mejor práctica)
-      const nuevoSalt = generarSalt();
+      const nuevoSalt = await generarSalt();
       await db.runAsync(
         'UPDATE usuarios SET pin_hash = ?, salt = ? WHERE id = ?',
         [hashPin(pinNuevo, nuevoSalt), nuevoSalt, id]
@@ -117,7 +117,7 @@ export const UsuarioRepository = {
       if (pinError) return { ok: false, error: pinError };
 
       const db = await getDb();
-      const nuevoSalt = generarSalt();
+      const nuevoSalt = await generarSalt();
       await db.runAsync(
         'UPDATE usuarios SET pin_hash = ?, salt = ? WHERE id = ?',
         [hashPin(pinNuevo, nuevoSalt), nuevoSalt, id]

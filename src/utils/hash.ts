@@ -3,6 +3,7 @@
  * Se usa para hashear PINs antes de guardarlos en SQLite.
  * NUNCA se almacena el PIN en texto plano.
  */
+import * as Crypto from 'expo-crypto';
 
 function rightRotate(value: number, amount: number): number {
   return (value >>> amount) | (value << (32 - amount));
@@ -89,13 +90,12 @@ export function sha256(message: string): string {
 /**
  * Genera un salt aleatorio de 32 caracteres hex (128 bits).
  * Cada usuario tiene un salt único — imposibilita rainbow-tables.
+ *
+ * Usa expo-crypto.getRandomBytesAsync (CSPRNG nativo del sistema), no
+ * Math.random, para que el salt sea criptográficamente seguro.
  */
-export function generarSalt(): string {
-  const bytes = new Uint8Array(16);
-  // Math.random no es criptográficamente seguro, pero suficiente para
-  // diferenciar hashes de PINs entre usuarios. Para producción crítica
-  // migrar a expo-crypto.getRandomBytesAsync() cuando esté disponible.
-  for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+export async function generarSalt(): Promise<string> {
+  const bytes = await Crypto.getRandomBytesAsync(16);
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 

@@ -6,9 +6,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "description": "Sistema POS móvil con reconocimiento de voz offline para pequeños comercios en Nicaragua",
-    "primaryColor": "#38bdf8",
+    "primaryColor": "#1D4ED8",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.stockvoz.app",
@@ -21,7 +21,7 @@
       "package": "com.stockvoz.app",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#0f172a",
+        "backgroundColor": "#FAFAF8",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
