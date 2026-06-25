@@ -38,7 +38,9 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+# /android se versiona: contiene fixes nativos manuales (Gradle 8.13, Jetifier,
+# manifest merger) necesarios para compilar con @react-native-voice. Los
+# artefactos de build se excluyen vía android/.gitignore.
 
 # IDE
 .idea/
