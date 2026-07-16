@@ -1,26 +1,35 @@
 import * as SQLite from 'expo-sqlite';
 
-let _db: SQLite.SQLiteDatabase | null = null;
+// Cacheamos la PROMESA de inicialización, no la conexión ya resuelta.
+// Esto es clave: en el arranque muchos componentes llaman a getDb() de
+// forma concurrente. Si solo cacheáramos la conexión resuelta, todas esas
+// llamadas verían el caché vacío y CADA UNA abriría su propia conexión a la
+// misma base (condición de carrera). expo-sqlite invalida las conexiones
+// huérfanas y sus prepareAsync fallan con NullPointerException.
+// Al cachear la promesa, todos los llamadores concurrentes esperan la MISMA
+// inicialización y comparten UNA sola conexión.
+let _dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (_db) return _db;
-  // Inicializamos sobre una variable local y solo asignamos al singleton
-  // _db cuando TODO salió bien. Si configurarPragmas o las migraciones
-  // fallan, no dejamos una conexión a medio configurar cacheada (eso
-  // "envenena" todas las llamadas siguientes con errores de transacción).
-  const db = await SQLite.openDatabaseAsync('stockvoz.db');
-  try {
-    await configurarPragmas(db);
-    await correrMigraciones(db);
-    // Consolidar el WAL en el archivo principal para que no crezca sin
-    // límite tras muchas migraciones/escrituras.
-    try { await db.runAsync('PRAGMA wal_checkpoint(TRUNCATE)'); } catch {}
-  } catch (e) {
-    try { await db.closeAsync(); } catch {}
-    throw e;
-  }
-  _db = db;
-  return _db;
+export function getDb(): Promise<SQLite.SQLiteDatabase> {
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = (async () => {
+    const db = await SQLite.openDatabaseAsync('stockvoz.db');
+    try {
+      await configurarPragmas(db);
+      await correrMigraciones(db);
+      // Consolidar el WAL en el archivo principal para que no crezca sin
+      // límite tras muchas migraciones/escrituras.
+      try { await db.runAsync('PRAGMA wal_checkpoint(TRUNCATE)'); } catch {}
+    } catch (e) {
+      // Si la init falla, descartamos la promesa para reintentar limpio
+      // en la próxima llamada (sin dejar una conexión rota cacheada).
+      _dbPromise = null;
+      try { await db.closeAsync(); } catch {}
+      throw e;
+    }
+    return db;
+  })();
+  return _dbPromise;
 }
 
 /**
@@ -236,8 +245,14 @@ async function correrMigraciones(db: SQLite.SQLiteDatabase): Promise<void> {
 }
 
 export async function closeDb(): Promise<void> {
-  if (_db) {
-    await _db.closeAsync();
-    _db = null;
+  if (_dbPromise) {
+    const promesa = _dbPromise;
+    _dbPromise = null;
+    try {
+      const db = await promesa;
+      await db.closeAsync();
+    } catch {
+      // si la init había fallado, no hay nada que cerrar
+    }
   }
 }

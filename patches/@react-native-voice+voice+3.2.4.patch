@@ -310,6 +310,36 @@ diff --git a/node_modules/@react-native-voice/voice/android/build/tmp/compileDeb
 new file mode 100644
 index 0000000..a211a08
 Binary files /dev/null and b/node_modules/@react-native-voice/voice/android/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin differ
+diff --git a/node_modules/@react-native-voice/voice/android/src/main/java/com/wenkesj/voice/VoiceModule.java b/node_modules/@react-native-voice/voice/android/src/main/java/com/wenkesj/voice/VoiceModule.java
+index f22833e..8fa4280 100644
+--- a/node_modules/@react-native-voice/voice/android/src/main/java/com/wenkesj/voice/VoiceModule.java
++++ b/node_modules/@react-native-voice/voice/android/src/main/java/com/wenkesj/voice/VoiceModule.java
+@@ -322,8 +322,10 @@ public class VoiceModule extends ReactContextBaseJavaModule implements Recogniti
+     WritableArray arr = Arguments.createArray();
+ 
+     ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+-    for (String result : matches) {
+-      arr.pushString(result);
++    if (matches != null) {
++      for (String result : matches) {
++        arr.pushString(result);
++      }
+     }
+ 
+     WritableMap event = Arguments.createMap();
+@@ -345,8 +347,10 @@ public class VoiceModule extends ReactContextBaseJavaModule implements Recogniti
+     WritableArray arr = Arguments.createArray();
+ 
+     ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+-    for (String result : matches) {
+-      arr.pushString(result);
++    if (matches != null) {
++      for (String result : matches) {
++        arr.pushString(result);
++      }
+     }
+ 
+     WritableMap event = Arguments.createMap();
 diff --git a/node_modules/@react-native-voice/voice/dist/index.js b/node_modules/@react-native-voice/voice/dist/index.js
 index a10af13..4ad31aa 100644
 --- a/node_modules/@react-native-voice/voice/dist/index.js

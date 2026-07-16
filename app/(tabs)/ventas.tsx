@@ -30,31 +30,34 @@ export default function PantallaVentas() {
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
   const { sesion } = useSesion();
-  const { estado: estadoVoz, resultado: resultadoVoz, errorMensaje: errorVoz, iniciarEscucha, detenerEscucha, limpiar, segundosRestantes } = useVoz();
+  const { estado: estadoVoz, resultado: resultadoVoz, errorMensaje: errorVoz, iniciarEscucha, detenerEscucha, limpiar, segundos: segundosVoz } = useVoz();
 
   useEffect(() => {
     cargarRecientes();
   }, [cargarRecientes]);
 
-  // Cuando el motor de voz devuelve resultado, agregar al carrito
+  // Cuando el motor de voz devuelve la lista, agregar todos los productos
+  // reconocidos al carrito de una sola pasada.
   useEffect(() => {
     if (!resultadoVoz) return;
-    if (resultadoVoz.productosEncontrados.length === 1) {
-      agregarAlCarrito(resultadoVoz.productosEncontrados[0], resultadoVoz.cantidad);
-      limpiar();
-    } else if (resultadoVoz.productosEncontrados.length > 1) {
-      // Más de un resultado: mostrar opciones
+    const noEncontrados: string[] = [];
+    let agregados = 0;
+    for (const item of resultadoVoz.items) {
+      if (item.productosEncontrados.length >= 1) {
+        // Si hay varias coincidencias, tomamos la más relevante (primera)
+        agregarAlCarrito(item.productosEncontrados[0], item.cantidad);
+        agregados++;
+      } else {
+        noEncontrados.push(item.palabras.join(' '));
+      }
+    }
+    limpiar();
+    if (noEncontrados.length > 0) {
       Alert.alert(
-        'Varios productos encontrados',
-        `"${resultadoVoz.transcripcion}" coincide con varios productos. ¿Cuál querías?`,
-        resultadoVoz.productosEncontrados.slice(0, 3).map((p) => ({
-          text: p.nombre,
-          onPress: () => { agregarAlCarrito(p, resultadoVoz.cantidad); limpiar(); },
-        }))
+        agregados > 0 ? 'Algunos productos no se encontraron' : 'No se encontraron productos',
+        `No encontré: ${noEncontrados.join(', ')}.` +
+          (agregados > 0 ? `\nAgregué ${agregados} al carrito.` : '')
       );
-    } else {
-      Alert.alert('No encontrado', `No se encontró "${resultadoVoz.transcripcion}" en el inventario.`);
-      limpiar();
     }
   }, [resultadoVoz]);
 
@@ -163,12 +166,14 @@ export default function PantallaVentas() {
           }
           <View style={{ flex: 1 }}>
             <Text style={[s.bannerVozTexto, estadoVoz === 'error' && { color: C.rojo }]}>
-              {estadoVoz === 'escuchando' ? 'Escuchando... habla ahora'
-                : estadoVoz === 'procesando' ? 'Buscando producto...'
+              {estadoVoz === 'escuchando' ? 'Escuchando... di tu lista de productos'
+                : estadoVoz === 'procesando' ? 'Buscando productos...'
                 : (errorVoz ?? 'Voz no disponible')}
             </Text>
-            {estadoVoz === 'escuchando' && segundosRestantes > 0 && (
-              <Text style={s.bannerVozSub}>{segundosRestantes}s · Di el nombre del producto</Text>
+            {estadoVoz === 'escuchando' && (
+              <Text style={s.bannerVozSub}>
+                {segundosVoz}s · Toca el micrófono para terminar
+              </Text>
             )}
           </View>
           <TouchableOpacity onPress={() => { detenerEscucha(); limpiar(); }} style={s.bannerBtnStop}>

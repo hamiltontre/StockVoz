@@ -6,14 +6,36 @@ import type { Producto } from '../types';
 
 export type EstadoVoz = 'inactivo' | 'escuchando' | 'procesando' | 'error';
 
-export interface ResultadoVoz {
-  transcripcion: string;
-  productosEncontrados: Producto[];
+/** Un producto reconocido dentro de la lista hablada. */
+export interface ItemVoz {
   cantidad: number;
+  palabras: string[];
+  productosEncontrados: Producto[];
 }
 
-const LOCALE_ES = 'es-419';
-const TIMEOUT_MS = 8000;
+export interface ResultadoVoz {
+  transcripcion: string;
+  items: ItemVoz[];
+}
+
+// 'es-419' (código regional Latinoamérica de la ONU) no es reconocido de
+// forma confiable por el backend de reconocimiento de voz de Google en
+// algunos dispositivos/OEMs — devuelve resultados vacíos aunque detecte
+// audio. 'es-US' tiene mejor soporte real y funciona bien con acento
+// latinoamericano/nicaragüense.
+const LOCALE_ES = 'es-US';
+
+// Opciones del reconocedor: tolerar pausas largas (4s) para que el vendedor
+// pueda dictar su lista con calma sin que se corte la sesión, y resultados
+// parciales para no perder lo dicho. (Algunos Android ignoran estos extras,
+// por eso además re-armamos la escucha al terminar cada segmento.)
+const OPCIONES_VOZ = {
+  EXTRA_LANGUAGE_MODEL: 'LANGUAGE_MODEL_FREE_FORM',
+  EXTRA_PARTIAL_RESULTS: true,
+  EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 4000,
+  EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 4000,
+  EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 4000,
+};
 
 // RCTVoice es null en Expo Go (no hay native build).
 // Verificamos ANTES de hacer require para evitar que el constructor
@@ -130,6 +152,75 @@ export function parsearTranscripcion(transcripcion: string): { cantidad: number;
 }
 
 /**
+ * Parsea una transcripción con VARIOS productos en una lista hablada.
+ * La cantidad puede ir antes o después del nombre; los números actúan como
+ * separadores entre productos.
+ *
+ * Ejemplos:
+ *   "maruchan cinco platano seis pan siete"
+ *      → [{2}maruchan? no] → [{5,maruchan},{6,platano},{7,pan}]
+ *   "cinco maruchan seis platano"   → [{5,maruchan},{6,platano}]
+ *   "dos coca cola tres fanta"       → [{2,[coca,cola]},{3,[fanta]}]
+ *   "maruchan"                       → [{1,maruchan}]
+ */
+export function parsearMultiplesProductos(
+  transcripcion: string
+): Array<{ cantidad: number; palabras: string[] }> {
+  const tokens = normalizarTexto(transcripcion).split(/\s+/).filter(Boolean);
+  const segmentos: Array<{ cantidad: number; palabras: string[] }> = [];
+
+  let curWords: string[] = [];
+  let curQty: number | null = null;
+  let pendingQty: number | null = null;
+
+  const valorNumero = (token: string): number | null => {
+    const d = parseInt(token, 10);
+    if (!isNaN(d) && d > 0 && d <= 999) return d;
+    if (NUMEROS_TEXTO[token]) return NUMEROS_TEXTO[token];
+    return null;
+  };
+
+  const emitir = () => {
+    if (curWords.length > 0) {
+      segmentos.push({ cantidad: curQty ?? 1, palabras: curWords });
+    }
+    curWords = [];
+    curQty = null;
+  };
+
+  for (const token of tokens) {
+    const n = valorNumero(token);
+    if (n !== null) {
+      if (curWords.length > 0) {
+        if (curQty == null) {
+          // patrón "nombre cantidad" → cierra este producto con n
+          curQty = n;
+          emitir();
+        } else {
+          // este producto ya tenía cantidad (patrón "cantidad nombre");
+          // n pertenece al SIGUIENTE producto
+          emitir();
+          pendingQty = n;
+        }
+      } else {
+        pendingQty = n;
+      }
+      continue;
+    }
+    if (PALABRAS_IGNORAR.has(token)) continue;
+    if (token.length < 2) continue;
+    // palabra de producto
+    if (pendingQty != null && curWords.length === 0) {
+      curQty = pendingQty;
+      pendingQty = null;
+    }
+    curWords.push(token);
+  }
+  emitir();
+  return segmentos;
+}
+
+/**
  * Estrategia de búsqueda en capas (de más específica a más flexible):
  *
  * Nivel 1: coincidencia exacta de palabra clave normalizada
@@ -168,48 +259,68 @@ export async function buscarProductosInteligente(palabras: string[]): Promise<Pr
   return [];
 }
 
+// Tope de seguridad: si el vendedor olvida apagar el micrófono, se corta solo.
+// Tope de seguridad: si el micrófono queda encendido, se corta solo.
+const MAX_ESCUCHA_MS = 60_000;
+
 export function useVoz() {
   const [estado, setEstado] = useState<EstadoVoz>('inactivo');
   const [resultado, setResultado] = useState<ResultadoVoz | null>(null);
   const [errorMensaje, setErrorMensaje] = useState<string | null>(null);
-  const [segundosRestantes, setSegundosRestantes] = useState(0);
+  const [segundos, setSegundos] = useState(0); // tiempo escuchando (informativo)
   const disponible = useRef(VOICE_NATIVO_DISPONIBLE);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const escuchandoRef = useRef(false);
+  const cronometroRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const limiteRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const limpiarTimers = useCallback(() => {
-    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
-    setSegundosRestantes(0);
+    if (cronometroRef.current) { clearInterval(cronometroRef.current); cronometroRef.current = null; }
+    if (limiteRef.current) { clearTimeout(limiteRef.current); limiteRef.current = null; }
+    setSegundos(0);
   }, []);
 
-  const handleResultados = useCallback(async (e: { value?: string[] }) => {
-    limpiarTimers();
-    const transcripcion = e.value?.[0] ?? '';
-    if (!transcripcion.trim()) {
-      setEstado('inactivo');
-      return;
-    }
-
+  // Procesa la transcripción → lista de productos (uno o varios).
+  // Una sola sesión de reconocimiento: el SpeechRecognizer entrega TODO lo
+  // dicho (con la tolerancia a pausas de OPCIONES_VOZ) en un único resultado,
+  // que aquí dividimos en varios productos. NO re-armamos el reconocedor —
+  // eso causaba ANR/crashes por llamar start()/stop() en ráfaga.
+  const procesar = useCallback(async (transcripcion: string) => {
+    const texto = transcripcion.trim();
+    if (!texto) { setEstado('inactivo'); return; }
     setEstado('procesando');
     try {
-      const { cantidad, palabras } = parsearTranscripcion(transcripcion);
-      const productosEncontrados = await buscarProductosInteligente(palabras);
-      setResultado({ transcripcion, productosEncontrados, cantidad });
+      const segmentos = parsearMultiplesProductos(texto);
+      const items: ItemVoz[] = [];
+      for (const seg of segmentos) {
+        const productosEncontrados = await buscarProductosInteligente(seg.palabras);
+        items.push({ cantidad: seg.cantidad, palabras: seg.palabras, productosEncontrados });
+      }
+      setResultado({ transcripcion: texto, items });
+      setEstado('inactivo');
     } catch {
       setErrorMensaje('Error al procesar el audio');
       setEstado('error');
       setTimeout(() => setEstado('inactivo'), 3000);
-      return;
     }
-    setEstado('inactivo');
-  }, [limpiarTimers]);
+  }, []);
+
+  // Resultado final de la sesión (fin natural por silencio O tras detener).
+  const handleResultados = useCallback((e: { value?: string[] }) => {
+    console.warn('[DIAG voz] onSpeechResults e.value=', JSON.stringify(e.value));
+    escuchandoRef.current = false;
+    limpiarTimers();
+    procesar(e.value?.[0] ?? '');
+  }, [procesar, limpiarTimers]);
 
   const handleError = useCallback((e: { error?: { message?: string; code?: string } }) => {
+    console.warn('[DIAG voz] onSpeechError e=', JSON.stringify(e));
+    escuchandoRef.current = false;
     limpiarTimers();
     const code = String(e.error?.code ?? '');
-    // Código 7 = no match (no se reconoció nada hablado) — no es un error real
-    if (code === '7' || code === 'no-speech') {
+    // 5=client, 6=speech timeout, 7=no match: el usuario no dijo nada
+    // reconocible — no es un error real, simplemente volvemos a inactivo.
+    if (code === '5' || code === '6' || code === '7' || code === 'no-speech') {
       setEstado('inactivo');
       return;
     }
@@ -233,6 +344,18 @@ export function useVoz() {
     };
   }, [handleResultados, handleError, limpiarTimers]);
 
+  // Detiene la escucha (toque del vendedor). Voice.stop() hace que el
+  // reconocedor entregue el resultado final vía onSpeechResults, que procesa.
+  const detenerEscucha = useCallback(async () => {
+    if (!escuchandoRef.current) { setEstado('inactivo'); return; }
+    escuchandoRef.current = false;
+    limpiarTimers();
+    const Voice = getVoice();
+    if (!Voice) { setEstado('inactivo'); return; }
+    setEstado('procesando');
+    try { await Voice.stop(); } catch { setEstado('inactivo'); }
+  }, [limpiarTimers]);
+
   const iniciarEscucha = useCallback(async () => {
     const Voice = getVoice();
     if (!Voice) {
@@ -251,41 +374,22 @@ export function useVoz() {
     try {
       setResultado(null);
       setErrorMensaje(null);
+      escuchandoRef.current = true;
       setEstado('escuchando');
-      await Voice.start(LOCALE_ES);
+      setSegundos(0);
+      await Voice.start(LOCALE_ES, OPCIONES_VOZ);
 
-      // Countdown visual
-      setSegundosRestantes(Math.ceil(TIMEOUT_MS / 1000));
-      countdownRef.current = setInterval(() => {
-        setSegundosRestantes((prev) => {
-          if (prev <= 1) {
-            if (countdownRef.current) clearInterval(countdownRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      // Auto-stop de seguridad
-      timeoutRef.current = setTimeout(async () => {
-        try { await Voice.stop(); } catch { /* noop */ }
-        setEstado((prev) => (prev === 'escuchando' ? 'inactivo' : prev));
-      }, TIMEOUT_MS);
+      cronometroRef.current = setInterval(() => setSegundos((s) => s + 1), 1000);
+      // Tope de seguridad: detener si se pasa el máximo.
+      limiteRef.current = setTimeout(() => { detenerEscucha(); }, MAX_ESCUCHA_MS);
     } catch (e) {
+      escuchandoRef.current = false;
       limpiarTimers();
       setErrorMensaje(String(e));
       setEstado('error');
       setTimeout(() => setEstado('inactivo'), 3000);
     }
-  }, [limpiarTimers]);
-
-  const detenerEscucha = useCallback(async () => {
-    limpiarTimers();
-    const Voice = getVoice();
-    if (!Voice) { setEstado('inactivo'); return; }
-    try { await Voice.stop(); } catch { /* noop */ }
-    setEstado('inactivo');
-  }, [limpiarTimers]);
+  }, [limpiarTimers, detenerEscucha]);
 
   const limpiar = useCallback(() => {
     setResultado(null);
@@ -298,7 +402,7 @@ export function useVoz() {
     estado,
     resultado,
     errorMensaje,
-    segundosRestantes,
+    segundos,
     disponible: disponible.current,
     iniciarEscucha,
     detenerEscucha,
