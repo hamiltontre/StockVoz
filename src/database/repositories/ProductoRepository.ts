@@ -17,6 +17,7 @@ function rowToProducto(row: Record<string, unknown>): Producto {
     codigo_barras: (row.codigo_barras as string) ?? null,
     precio: row.precio as number,
     precio_costo: (row.precio_costo as number) ?? 0,
+    precio_docena: (row.precio_docena as number) ?? 0,
     stock: row.stock as number,
     stock_minimo: row.stock_minimo as number,
     fecha_vencimiento: (row.fecha_vencimiento as string) ?? null,
@@ -93,23 +94,30 @@ export const ProductoRepository = {
       if (dto.precio_costo != null && !Number.isFinite(dto.precio_costo)) {
         return { ok: false, error: 'El precio de costo debe ser un número válido' };
       }
+      if (dto.precio_docena != null && !Number.isFinite(dto.precio_docena)) {
+        return { ok: false, error: 'El precio por docena debe ser un número válido' };
+      }
       if (dto.precio < 0) return { ok: false, error: 'El precio no puede ser negativo' };
       if (dto.stock < 0) return { ok: false, error: 'El stock no puede ser negativo' };
       if (dto.precio_costo != null && dto.precio_costo < 0) {
         return { ok: false, error: 'El precio de costo no puede ser negativo' };
       }
+      if (dto.precio_docena != null && dto.precio_docena < 0) {
+        return { ok: false, error: 'El precio por docena no puede ser negativo' };
+      }
 
       const db = await getDb();
       const result = await db.runAsync(
         `INSERT INTO productos
-           (nombre, codigo_barras, precio, precio_costo, stock, stock_minimo,
+           (nombre, codigo_barras, precio, precio_costo, precio_docena, stock, stock_minimo,
             fecha_vencimiento, unidad, categoria_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           dto.nombre.trim(),
           dto.codigo_barras ?? null,
           dto.precio,
           dto.precio_costo ?? 0,
+          dto.precio_docena ?? 0,
           dto.stock,
           dto.stock_minimo ?? 1,
           dto.fecha_vencimiento ?? null,
@@ -162,6 +170,12 @@ export const ProductoRepository = {
       if (dto.precio_costo !== undefined) {
         if (dto.precio_costo < 0) return { ok: false, error: 'El precio de costo no puede ser negativo' };
         campos.push('precio_costo = ?'); valores.push(dto.precio_costo);
+      }
+      if (dto.precio_docena !== undefined) {
+        if (!Number.isFinite(dto.precio_docena) || dto.precio_docena < 0) {
+          return { ok: false, error: 'El precio por docena no es válido' };
+        }
+        campos.push('precio_docena = ?'); valores.push(dto.precio_docena);
       }
       if (dto.fecha_vencimiento !== undefined) {
         campos.push('fecha_vencimiento = ?'); valores.push(dto.fecha_vencimiento);

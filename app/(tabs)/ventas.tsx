@@ -15,6 +15,12 @@ import { useVoz } from '../../src/hooks/useVoz';
 import { useSesion } from '../../src/context/SesionContext';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
+import {
+  calcularSubtotalLinea,
+  pasoCantidad,
+  formatearCantidadConUnidad,
+  abreviaturaUnidad,
+} from '../../src/utils/cantidad';
 import { ModalRecibo } from '../../src/components/ModalRecibo';
 import { ModalBuscarProducto } from '../../src/components/ModalBuscarProducto';
 import { COLORES as C } from '../../src/theme/colors';
@@ -45,7 +51,14 @@ export default function PantallaVentas() {
     for (const item of resultadoVoz.items) {
       if (item.productosEncontrados.length >= 1) {
         // Si hay varias coincidencias, tomamos la más relevante (primera)
-        agregarAlCarrito(item.productosEncontrados[0], item.cantidad);
+        const producto = item.productosEncontrados[0];
+        // "media docena de clavos": si el stock del producto se cuenta por
+        // unidad, la docena hablada son 12 unidades (0.5 doc → 6). Si el
+        // producto ya se mide en docenas, la cantidad queda tal cual.
+        const cantidad = item.enDocenas && producto.unidad !== 'docena'
+          ? item.cantidad * 12
+          : item.cantidad;
+        agregarAlCarrito(producto, cantidad);
         agregados++;
       } else {
         noEncontrados.push(item.palabras.join(' '));
@@ -90,13 +103,17 @@ export default function PantallaVentas() {
   }, []);
 
   const totalCarrito = carrito.reduce(
-    (acc, i) => acc + i.producto.precio * i.cantidad,
+    (acc, i) => acc + calcularSubtotalLinea(i.producto, i.cantidad),
     0
   );
 
-  // Ganancia estimada — solo cuenta productos con precio_costo registrado
+  // Ganancia estimada — subtotal real (con precio de docena si aplica)
+  // menos el costo de la cantidad vendida.
   const gananciaCarrito = carrito.reduce(
-    (acc, i) => acc + (i.producto.precio - (i.producto.precio_costo ?? 0)) * i.cantidad,
+    (acc, i) =>
+      acc +
+      calcularSubtotalLinea(i.producto, i.cantidad) -
+      Math.round((i.producto.precio_costo ?? 0) * i.cantidad),
     0
   );
   const hayPreciosCosto = carrito.some((i) => (i.producto.precio_costo ?? 0) > 0);
@@ -198,22 +215,35 @@ export default function PantallaVentas() {
           <View style={s.itemCarrito}>
             <View style={s.itemInfo}>
               <Text style={s.itemNombre}>{item.producto.nombre}</Text>
-              <Text style={s.itemPrecio}>{centavosACordobas(item.producto.precio)} c/u</Text>
+              <Text style={s.itemPrecio}>
+                {centavosACordobas(item.producto.precio)} / {abreviaturaUnidad(item.producto.unidad)}
+                {item.producto.precio_docena > 0
+                  ? `  ·  docena ${centavosACordobas(item.producto.precio_docena)}`
+                  : ''}
+              </Text>
             </View>
             <View style={s.itemControles}>
-              <TouchableOpacity onPress={() => cambiarCantidad(item.producto.id, -1)} style={s.btnControl}>
-                <Ionicons name="remove" size={18} color={C.texto} />
+              <TouchableOpacity
+                onPress={() => cambiarCantidad(item.producto.id, -pasoCantidad(item.producto.unidad))}
+                style={s.btnControl}
+              >
+                <Ionicons name="remove" size={20} color={C.texto} />
               </TouchableOpacity>
-              <Text style={s.itemCantidad}>{item.cantidad}</Text>
-              <TouchableOpacity onPress={() => cambiarCantidad(item.producto.id, 1)} style={s.btnControl}>
-                <Ionicons name="add" size={18} color={C.texto} />
+              <Text style={s.itemCantidad}>
+                {formatearCantidadConUnidad(item.cantidad, item.producto.unidad)}
+              </Text>
+              <TouchableOpacity
+                onPress={() => cambiarCantidad(item.producto.id, pasoCantidad(item.producto.unidad))}
+                style={s.btnControl}
+              >
+                <Ionicons name="add" size={20} color={C.texto} />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => removerDelCarrito(item.producto.id)} style={s.btnEliminar}>
                 <Ionicons name="trash-outline" size={18} color={C.rojo} />
               </TouchableOpacity>
             </View>
             <Text style={s.itemSubtotal}>
-              {centavosACordobas(item.producto.precio * item.cantidad)}
+              {centavosACordobas(calcularSubtotalLinea(item.producto, item.cantidad))}
             </Text>
           </View>
         )}
@@ -248,7 +278,7 @@ export default function PantallaVentas() {
             {procesando ? (
               <ActivityIndicator color={C.fondo} />
             ) : (
-              <Text style={s.botonCobrarTexto}>Cobrar</Text>
+              <Text style={s.botonCobrarTexto}>Cobrar {centavosACordobas(totalCarrito)}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -294,16 +324,22 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   botonMic: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     backgroundColor: C.tarjeta,
     borderWidth: 2,
     borderColor: C.acento,
     alignItems: 'center',
     justifyContent: 'center',
+    // Sombra sutil para que el mic —la acción estrella— resalte
+    elevation: 3,
+    shadowColor: C.acento,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
-  botonMicActivo: { backgroundColor: C.acento },
+  botonMicActivo: { backgroundColor: C.acento, elevation: 6 },
   bannerVoz: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -342,14 +378,14 @@ const s = StyleSheet.create({
   itemPrecio: { fontSize: 13, color: C.subtexto, marginTop: 2 },
   itemControles: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   btnControl: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     backgroundColor: C.borde,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  itemCantidad: { fontSize: 16, fontWeight: '700', color: C.texto, minWidth: 24, textAlign: 'center' },
+  itemCantidad: { fontSize: 16, fontWeight: '700', color: C.texto, minWidth: 56, textAlign: 'center' },
   btnEliminar: { marginLeft: 'auto' as any, padding: 4 },
   itemSubtotal: { fontSize: 15, fontWeight: '700', color: C.acento, textAlign: 'right' },
   footer: {
@@ -377,9 +413,10 @@ const s = StyleSheet.create({
   botonCobrar: {
     backgroundColor: C.verde,
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 18,
     alignItems: 'center',
+    elevation: 2,
   },
   botonCobrarDeshabilitado: { opacity: 0.6 },
-  botonCobrarTexto: { fontSize: 17, fontWeight: '700', color: C.fondo },
+  botonCobrarTexto: { fontSize: 18, fontWeight: '800', color: C.fondo },
 });

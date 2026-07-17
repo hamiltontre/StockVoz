@@ -189,6 +189,19 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
       `CREATE INDEX IF NOT EXISTS idx_productos_vencimiento ON productos(fecha_vencimiento)`,
     ],
   },
+  {
+    // Migración v6 — precio por docena (ferreterías/pulperías).
+    // Un producto puede tener precio por unidad Y por docena (más barato).
+    // 0 = no se vende por docena. El stock sigue contándose en la unidad
+    // base del producto; vender "una docena" descuenta 12 unidades.
+    // NOTA: las cantidades fraccionarias (media libra = 0.5) NO requieren
+    // migración: SQLite guarda 0.5 como REAL aunque la columna declare
+    // INTEGER (afinidad de tipos), y los CHECK (> 0, >= 0) siguen válidos.
+    version: 6,
+    sentencias: [
+      `ALTER TABLE productos ADD COLUMN precio_docena INTEGER NOT NULL DEFAULT 0 CHECK(precio_docena >= 0)`,
+    ],
+  },
 ];
 
 /**

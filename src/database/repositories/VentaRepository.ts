@@ -2,6 +2,7 @@ import { getDb } from '../db';
 import { SyncRepository } from './SyncRepository';
 import { ConfigRepository, CLAVES } from './ConfigRepository';
 import { bus, EVENTOS } from '../../utils/eventos';
+import { calcularSubtotalLinea } from '../../utils/cantidad';
 import type {
   Venta,
   DetalleVenta,
@@ -56,7 +57,7 @@ export const VentaRepository = {
       await db.runAsync('BEGIN');
       try {
         const subtotalBruto = dto.items.reduce(
-          (acc, item) => acc + item.producto.precio * item.cantidad,
+          (acc, item) => acc + calcularSubtotalLinea(item.producto, item.cantidad),
           0
         );
         const total = Math.max(0, subtotalBruto - dto.descuento);
@@ -83,7 +84,7 @@ export const VentaRepository = {
             );
           }
 
-          const subtotal = item.producto.precio * item.cantidad;
+          const subtotal = calcularSubtotalLinea(item.producto, item.cantidad);
           const detalleResult = await db.runAsync(
             `INSERT INTO detalle_ventas (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
              VALUES (?, ?, ?, ?, ?, ?)`,

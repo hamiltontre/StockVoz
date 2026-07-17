@@ -30,7 +30,8 @@ export interface Producto {
   codigo_barras: string | null;
   precio: number;            // precio de VENTA en centavos
   precio_costo: number;      // precio de COMPRA en centavos — para calcular ganancia
-  stock: number;
+  precio_docena: number;     // precio por DOCENA en centavos (0 = no se vende por docena)
+  stock: number;             // puede ser fraccionario (9.5 libras)
   stock_minimo: number;      // alerta cuando baje de aquí
   fecha_vencimiento: string | null; // ISO-8601 yyyy-mm-dd, null si no aplica
   unidad: UnidadProducto;

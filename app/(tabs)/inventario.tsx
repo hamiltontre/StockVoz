@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useInventario } from '../../src/hooks/useInventario';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
+import { formatearCantidadConUnidad } from '../../src/utils/cantidad';
 import type { Producto, CrearProductoDTO } from '../../src/types';
 
 import { COLORES as C } from '../../src/theme/colors';
@@ -26,6 +27,7 @@ const VACIO_DTO: CrearProductoDTO = {
   codigo_barras: null,
   precio: 0,
   precio_costo: 0,
+  precio_docena: 0,
   stock: 0,
   stock_minimo: 1,
   categoria_id: null,
@@ -51,6 +53,7 @@ export default function PantallaInventario() {
   const [form, setForm] = useState<CrearProductoDTO>(VACIO_DTO);
   const [precioTexto, setPrecioTexto] = useState('');
   const [precioCostoTexto, setPrecioCostoTexto] = useState('');
+  const [precioDocenaTexto, setPrecioDocenaTexto] = useState('');
   const [fechaVencTexto, setFechaVencTexto] = useState(''); // formato DD/MM/AAAA
   const [guardando, setGuardando] = useState(false);
 
@@ -69,6 +72,7 @@ export default function PantallaInventario() {
     setForm(VACIO_DTO);
     setPrecioTexto('');
     setPrecioCostoTexto('');
+    setPrecioDocenaTexto('');
     setFechaVencTexto('');
     setModalVisible(true);
   };
@@ -80,6 +84,7 @@ export default function PantallaInventario() {
       codigo_barras: producto.codigo_barras,
       precio: producto.precio,
       precio_costo: producto.precio_costo ?? 0,
+      precio_docena: producto.precio_docena ?? 0,
       stock: producto.stock,
       stock_minimo: producto.stock_minimo,
       categoria_id: producto.categoria_id,
@@ -88,6 +93,7 @@ export default function PantallaInventario() {
     });
     setPrecioTexto((producto.precio / 100).toFixed(2));
     setPrecioCostoTexto(producto.precio_costo > 0 ? (producto.precio_costo / 100).toFixed(2) : '');
+    setPrecioDocenaTexto(producto.precio_docena > 0 ? (producto.precio_docena / 100).toFixed(2) : '');
     // ISO yyyy-mm-dd → DD/MM/AAAA
     if (producto.fecha_vencimiento) {
       const [yyyy, mm, dd] = producto.fecha_vencimiento.split('-');
@@ -154,8 +160,14 @@ export default function PantallaInventario() {
       Alert.alert('Error', 'El precio de costo debe ser un número válido');
       return;
     }
+    const precioDocenaNum = precioDocenaTexto.trim() ? parseFloat(precioDocenaTexto) : 0;
+    if (isNaN(precioDocenaNum) || precioDocenaNum < 0) {
+      Alert.alert('Error', 'El precio por docena debe ser un número válido');
+      return;
+    }
     const precio = cordobasACentavos(precioNum);
     const precio_costo = cordobasACentavos(precioCostoNum);
+    const precio_docena = cordobasACentavos(precioDocenaNum);
     const fecha_vencimiento = parseFechaVenc(fechaVencTexto);
     if (fechaVencTexto.trim() && !fecha_vencimiento) {
       Alert.alert('Fecha inválida', 'Usa el formato DD/MM/AAAA, ej: 11/06/2027');
@@ -167,16 +179,16 @@ export default function PantallaInventario() {
         'El precio de venta es menor al precio de costo. ¿Continuar?',
         [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Continuar', onPress: () => guardarConfirmado({ precio, precio_costo, fecha_vencimiento }) },
+          { text: 'Continuar', onPress: () => guardarConfirmado({ precio, precio_costo, precio_docena, fecha_vencimiento }) },
         ]
       );
       return;
     }
-    await guardarConfirmado({ precio, precio_costo, fecha_vencimiento });
+    await guardarConfirmado({ precio, precio_costo, precio_docena, fecha_vencimiento });
   };
 
   const guardarConfirmado = async (
-    extra: { precio: number; precio_costo: number; fecha_vencimiento: string | null }
+    extra: { precio: number; precio_costo: number; precio_docena: number; fecha_vencimiento: string | null }
   ) => {
     const dto = { ...form, ...extra };
 
@@ -256,11 +268,14 @@ export default function PantallaInventario() {
             <TouchableOpacity style={s.tarjeta} onPress={() => abrirEditar(item)} activeOpacity={0.8}>
               <View style={s.tarjetaInfo}>
                 <Text style={s.tarjetaNombre}>{item.nombre}</Text>
-                <Text style={s.tarjetaPrecio}>{centavosACordobas(item.precio)}</Text>
+                <Text style={s.tarjetaPrecio}>
+                  {centavosACordobas(item.precio)}
+                  {item.precio_docena > 0 ? `  ·  docena ${centavosACordobas(item.precio_docena)}` : ''}
+                </Text>
               </View>
               <View style={s.tarjetaDerecha}>
                 <View style={[s.stockBadge, item.stock <= item.stock_minimo && s.stockBadgeBajo]}>
-                  <Text style={s.stockTexto}>{item.stock} uds</Text>
+                  <Text style={s.stockTexto}>{formatearCantidadConUnidad(item.stock, item.unidad)}</Text>
                 </View>
                 <View style={s.tarjetaAcciones}>
                   <TouchableOpacity
@@ -358,6 +373,21 @@ export default function PantallaInventario() {
               </View>
             </Campo>
 
+            {/* Precio por docena: solo aplica a productos contados por unidad.
+                Permite vender más barato por docena (clave en ferreterías). */}
+            {form.unidad === 'unidad' && (
+              <Campo label="Precio por docena (C$) — opcional">
+                <TextInput
+                  style={s.input}
+                  placeholder="Ej: 50.00 si la docena sale más barata"
+                  placeholderTextColor={C.subtexto}
+                  keyboardType="decimal-pad"
+                  value={precioDocenaTexto}
+                  onChangeText={setPrecioDocenaTexto}
+                />
+              </Campo>
+            )}
+
             <Campo label="Vencimiento (opcional)">
               <TextInput
                 style={s.input}
@@ -383,9 +413,9 @@ export default function PantallaInventario() {
                 <Campo label="Stock inicial">
                   <TextInput
                     style={s.input}
-                    keyboardType="number-pad"
+                    keyboardType="decimal-pad"
                     value={String(form.stock)}
-                    onChangeText={(v) => setForm((f) => ({ ...f, stock: parseInt(v) || 0 }))}
+                    onChangeText={(v) => setForm((f) => ({ ...f, stock: parseFloat(v.replace(',', '.')) || 0 }))}
                   />
                 </Campo>
               </View>
@@ -394,23 +424,13 @@ export default function PantallaInventario() {
                 <Campo label="Stock mínimo">
                   <TextInput
                     style={s.input}
-                    keyboardType="number-pad"
+                    keyboardType="decimal-pad"
                     value={String(form.stock_minimo)}
-                    onChangeText={(v) => setForm((f) => ({ ...f, stock_minimo: parseInt(v) || 0 }))}
+                    onChangeText={(v) => setForm((f) => ({ ...f, stock_minimo: parseFloat(v.replace(',', '.')) || 0 }))}
                   />
                 </Campo>
               </View>
             </View>
-
-            <Campo label="Código de barras (opcional)">
-              <TextInput
-                style={s.input}
-                placeholder="Escanear o ingresar"
-                placeholderTextColor={C.subtexto}
-                value={form.codigo_barras ?? ''}
-                onChangeText={(v) => setForm((f) => ({ ...f, codigo_barras: v || null }))}
-              />
-            </Campo>
 
             <TouchableOpacity
               style={[s.botonGuardar, guardando && { opacity: 0.6 }]}

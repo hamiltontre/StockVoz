@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
-import { normalizarTexto } from '../utils/texto';
+import { parsearMultiplesProductos } from '../utils/vozParser';
 import type { Producto } from '../types';
+
+// Re-export para compatibilidad: el parser vive en utils/vozParser (módulo
+// puro, sin react-native) para poder probarlo en Node.
+export { parsearTranscripcion, parsearMultiplesProductos } from '../utils/vozParser';
 
 export type EstadoVoz = 'inactivo' | 'escuchando' | 'procesando' | 'error';
 
@@ -11,6 +15,12 @@ export interface ItemVoz {
   cantidad: number;
   palabras: string[];
   productosEncontrados: Producto[];
+  /**
+   * true si la cantidad fue dicha en docenas ("media docena de clavos").
+   * Al agregar al carrito: si el producto se cuenta por unidad, se
+   * multiplica ×12; si su unidad ya es 'docena', la cantidad queda igual.
+   */
+  enDocenas?: boolean;
 }
 
 export interface ResultadoVoz {
@@ -81,146 +91,6 @@ async function asegurarPermisoMicrofono(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-// ─── Números en texto ────────────────────────────────────────────────────────
-const NUMEROS_TEXTO: Record<string, number> = {
-  un: 1, uno: 1, una: 1,
-  dos: 2,
-  tres: 3,
-  cuatro: 4,
-  cinco: 5,
-  seis: 6,
-  siete: 7,
-  ocho: 8,
-  nueve: 9,
-  diez: 10,
-  once: 11,
-  doce: 12,
-  quince: 15,
-  veinte: 20,
-  veintiuno: 21,
-  veinticinco: 25,
-  treinta: 30,
-  cuarenta: 40,
-  cincuenta: 50,
-  cien: 100,
-};
-
-// Palabras que NO son producto (artículos, preposiciones, muletillas).
-// Ya normalizadas: sin acentos, minúsculas.
-const PALABRAS_IGNORAR = new Set([
-  'de', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas',
-  'me', 'da', 'dame', 'quiero', 'necesito', 'pon', 'agrega', 'vende', 'vendeme',
-  'porfavor', 'por', 'favor', 'gracias', 'y', 'con', 'sin',
-  'del', 'al', 'que', 'mas', 'tambien',
-]);
-
-/**
- * Extrae cantidad y palabras candidatas de la transcripción.
- * Ejemplos:
- *   "dos pastillas de paracetamol" → { cantidad: 2, palabras: ['pastillas','paracetamol'] }
- *   "3 coca cola"                  → { cantidad: 3, palabras: ['coca','cola'] }
- *   "un jabón"                     → { cantidad: 1, palabras: ['jabon'] }
- */
-export function parsearTranscripcion(transcripcion: string): { cantidad: number; palabras: string[] } {
-  const tokens = normalizarTexto(transcripcion).split(/\s+/).filter(Boolean);
-
-  let cantidad = 1;
-  let cantidadEncontrada = false;
-  const palabras: string[] = [];
-
-  for (const token of tokens) {
-    if (!cantidadEncontrada) {
-      const numDigito = parseInt(token, 10);
-      if (!isNaN(numDigito) && numDigito > 0 && numDigito <= 999) {
-        cantidad = numDigito;
-        cantidadEncontrada = true;
-        continue;
-      }
-      // "un"/"una" también son artículos — solo cuentan como cantidad
-      // la primera vez, después se ignoran como artículo.
-      if (NUMEROS_TEXTO[token]) {
-        cantidad = NUMEROS_TEXTO[token];
-        cantidadEncontrada = true;
-        continue;
-      }
-    }
-    if (PALABRAS_IGNORAR.has(token)) continue;
-    if (token.length < 2) continue;
-    palabras.push(token);
-  }
-
-  return { cantidad, palabras };
-}
-
-/**
- * Parsea una transcripción con VARIOS productos en una lista hablada.
- * La cantidad puede ir antes o después del nombre; los números actúan como
- * separadores entre productos.
- *
- * Ejemplos:
- *   "maruchan cinco platano seis pan siete"
- *      → [{2}maruchan? no] → [{5,maruchan},{6,platano},{7,pan}]
- *   "cinco maruchan seis platano"   → [{5,maruchan},{6,platano}]
- *   "dos coca cola tres fanta"       → [{2,[coca,cola]},{3,[fanta]}]
- *   "maruchan"                       → [{1,maruchan}]
- */
-export function parsearMultiplesProductos(
-  transcripcion: string
-): Array<{ cantidad: number; palabras: string[] }> {
-  const tokens = normalizarTexto(transcripcion).split(/\s+/).filter(Boolean);
-  const segmentos: Array<{ cantidad: number; palabras: string[] }> = [];
-
-  let curWords: string[] = [];
-  let curQty: number | null = null;
-  let pendingQty: number | null = null;
-
-  const valorNumero = (token: string): number | null => {
-    const d = parseInt(token, 10);
-    if (!isNaN(d) && d > 0 && d <= 999) return d;
-    if (NUMEROS_TEXTO[token]) return NUMEROS_TEXTO[token];
-    return null;
-  };
-
-  const emitir = () => {
-    if (curWords.length > 0) {
-      segmentos.push({ cantidad: curQty ?? 1, palabras: curWords });
-    }
-    curWords = [];
-    curQty = null;
-  };
-
-  for (const token of tokens) {
-    const n = valorNumero(token);
-    if (n !== null) {
-      if (curWords.length > 0) {
-        if (curQty == null) {
-          // patrón "nombre cantidad" → cierra este producto con n
-          curQty = n;
-          emitir();
-        } else {
-          // este producto ya tenía cantidad (patrón "cantidad nombre");
-          // n pertenece al SIGUIENTE producto
-          emitir();
-          pendingQty = n;
-        }
-      } else {
-        pendingQty = n;
-      }
-      continue;
-    }
-    if (PALABRAS_IGNORAR.has(token)) continue;
-    if (token.length < 2) continue;
-    // palabra de producto
-    if (pendingQty != null && curWords.length === 0) {
-      curQty = pendingQty;
-      pendingQty = null;
-    }
-    curWords.push(token);
-  }
-  emitir();
-  return segmentos;
 }
 
 /**
@@ -310,7 +180,12 @@ export function useVoz() {
       const items: ItemVoz[] = [];
       for (const seg of segmentos) {
         const productosEncontrados = await buscarProductosInteligente(seg.palabras);
-        items.push({ cantidad: seg.cantidad, palabras: seg.palabras, productosEncontrados });
+        items.push({
+          cantidad: seg.cantidad,
+          palabras: seg.palabras,
+          productosEncontrados,
+          enDocenas: seg.enDocenas,
+        });
       }
       setResultado({ transcripcion: texto, items });
       setEstado('inactivo');

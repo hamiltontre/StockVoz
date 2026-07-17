@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { centavosACordobas } from '../utils/money';
+import { formatearCantidad } from '../utils/cantidad';
 import { getDb } from '../database/db';
 import type { VentaConDetalle } from '../types';
 
@@ -68,7 +69,7 @@ export function ModalRecibo({ venta, visible, onCerrar, esAdmin = false }: Props
   const generarTextoRecibo = (): string => {
     const linea = '─'.repeat(30);
     const items = venta.items
-      .map((i) => `${i.cantidad}x ${i.nombre_producto}\n   ${centavosACordobas(i.subtotal)}`)
+      .map((i) => `${formatearCantidad(i.cantidad)}x ${i.nombre_producto}\n   ${centavosACordobas(i.subtotal)}`)
       .join('\n');
     return `
 ${nombreNegocio}
@@ -139,7 +140,7 @@ StockVoz
                 <View key={i} style={s.itemBloque}>
                   <View style={s.itemFila}>
                     <Text style={s.itemNombre} numberOfLines={2}>
-                      {item.cantidad}× {item.nombre_producto}
+                      {formatearCantidad(item.cantidad)}× {item.nombre_producto}
                     </Text>
                     <Text style={s.itemSubtotal}>{centavosACordobas(item.subtotal)}</Text>
                   </View>
