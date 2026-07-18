@@ -26,4 +26,5 @@ export const EVENTOS = {
   STOCK_CAMBIO: 'stock:cambio',
   VENTA_CREADA: 'venta:creada',
   PRODUCTO_CAMBIO: 'producto:cambio',
+  FIADO_CAMBIO: 'fiado:cambio',
 } as const;

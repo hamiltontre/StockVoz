@@ -8,6 +8,7 @@ import type {
   DetalleVenta,
   VentaConDetalle,
   CrearVentaDTO,
+  FiadorResumen,
   Result,
 } from '../../types';
 
@@ -28,6 +29,9 @@ function rowToVenta(row: Record<string, unknown>): Venta {
     metodo_pago: row.metodo_pago as Venta['metodo_pago'],
     estado: row.estado as Venta['estado'],
     notas: (row.notas as string) ?? null,
+    es_fiado: (row.es_fiado as number) === 1,
+    fiador_nombre: (row.fiador_nombre as string) ?? null,
+    fiado_pagado_en: (row.fiado_pagado_en as string) ?? null,
     creado_en: row.creado_en as string,
   };
 }
@@ -48,6 +52,7 @@ export const VentaRepository = {
   async crear(dto: CrearVentaDTO): Promise<Result<VentaConDetalle>> {
     if (!dto.items.length) return { ok: false, error: 'El carrito está vacío' };
     if (dto.descuento < 0) return { ok: false, error: 'El descuento no puede ser negativo' };
+    const fiador = dto.fiador?.trim() || null;
 
     try {
       const negocioId = await obtenerNegocioId();
@@ -63,9 +68,10 @@ export const VentaRepository = {
         const total = Math.max(0, subtotalBruto - dto.descuento);
 
         const ventaResult = await db.runAsync(
-          `INSERT INTO ventas (negocio_id, total, descuento, metodo_pago, notas)
-           VALUES (?, ?, ?, ?, ?)`,
-          [negocioId, total, dto.descuento, dto.metodo_pago, dto.notas ?? null]
+          `INSERT INTO ventas (negocio_id, total, descuento, metodo_pago, notas, es_fiado, fiador_nombre)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [negocioId, total, dto.descuento, dto.metodo_pago, dto.notas ?? null,
+           fiador ? 1 : 0, fiador]
         );
         const ventaId = ventaResult.lastInsertRowId;
 
@@ -170,6 +176,60 @@ export const VentaRepository = {
 
       bus.emit(EVENTOS.STOCK_CAMBIO);
       return { ok: true, data: undefined };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  // ─── Fiados (el "cuaderno" de ventas al crédito) ─────────────────────────
+
+  /**
+   * Deuda pendiente agrupada por persona, como el cuaderno de la pulpería:
+   * "Doña María — C$450 (3 ventas, la más vieja hace 12 días)".
+   * Agrupa sin distinguir mayúsculas para que "maría" y "María" sean la misma.
+   */
+  async fiadosPendientes(): Promise<Result<FiadorResumen[]>> {
+    try {
+      const db = await getDb();
+      const rows = await db.getAllAsync<FiadorResumen>(
+        `SELECT
+           fiador_nombre,
+           SUM(total) AS total_deuda,
+           COUNT(*) AS cantidad_ventas,
+           CAST(julianday('now') - julianday(MIN(creado_en)) AS INTEGER) AS dias_deuda_mas_vieja
+         FROM ventas
+         WHERE es_fiado = 1
+           AND fiado_pagado_en IS NULL
+           AND estado = 'completada'
+           AND fiador_nombre IS NOT NULL
+         GROUP BY fiador_nombre COLLATE NOCASE
+         ORDER BY total_deuda DESC`
+      );
+      return { ok: true, data: rows };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  /**
+   * Marca como pagadas TODAS las ventas fiadas pendientes de una persona
+   * (el caso típico: llega y paga su cuenta completa).
+   * Devuelve cuántas ventas se saldaron.
+   */
+  async marcarFiadorPagado(fiadorNombre: string): Promise<Result<number>> {
+    try {
+      const db = await getDb();
+      const result = await db.runAsync(
+        `UPDATE ventas
+         SET fiado_pagado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE es_fiado = 1
+           AND fiado_pagado_en IS NULL
+           AND estado = 'completada'
+           AND fiador_nombre = ? COLLATE NOCASE`,
+        [fiadorNombre]
+      );
+      bus.emit(EVENTOS.FIADO_CAMBIO);
+      return { ok: true, data: result.changes };
     } catch (e) {
       return { ok: false, error: String(e) };
     }

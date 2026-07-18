@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   FlatList,
   TouchableOpacity,
   StyleSheet,
@@ -29,6 +30,8 @@ import type { ItemCarrito, MetodoPago, Producto, VentaConDetalle } from '../../s
 export default function PantallaVentas() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
+  const [esFiado, setEsFiado] = useState(false);
+  const [fiadorNombre, setFiadorNombre] = useState('');
   const [procesando, setProcesando] = useState(false);
   const [reciboVisible, setReciboVisible] = useState(false);
   const [ventaRecibo, setVentaRecibo] = useState<VentaConDetalle | null>(null);
@@ -120,17 +123,29 @@ export default function PantallaVentas() {
 
   const cobrar = useCallback(async () => {
     if (!carrito.length) return;
+    if (esFiado && !fiadorNombre.trim()) {
+      Alert.alert('Falta el nombre', '¿A nombre de quién queda el fiado?');
+      return;
+    }
     setProcesando(true);
-    const result = await registrarVenta(carrito, metodoPago);
+    const result = await registrarVenta(
+      carrito,
+      metodoPago,
+      0,
+      undefined,
+      esFiado ? fiadorNombre.trim() : undefined
+    );
     setProcesando(false);
     if (result.ok && result.venta) {
       setCarrito([]);
+      setEsFiado(false);
+      setFiadorNombre('');
       setVentaRecibo(result.venta);
       setReciboVisible(true);
     } else {
       Alert.alert('Error', result.error ?? 'No se pudo registrar la venta');
     }
-  }, [carrito, metodoPago, registrarVenta]);
+  }, [carrito, metodoPago, esFiado, fiadorNombre, registrarVenta]);
 
   const toggleMicrofono = useCallback(() => {
     if (estadoVoz === 'escuchando') {
@@ -252,10 +267,36 @@ export default function PantallaVentas() {
       {/* Footer de cobro */}
       {carrito.length > 0 && (
         <View style={s.footer}>
-          {/* Plan básico: solo efectivo */}
+          {/* Plan básico: solo efectivo. El fiado es aparte: la venta queda
+              registrada como deuda a nombre de alguien (el "cuaderno"). */}
           <View style={s.metodosPago}>
             <Text style={s.metodoLabel}>Método de pago: Efectivo</Text>
+            <TouchableOpacity
+              style={[s.chipFiado, esFiado && s.chipFiadoActivo]}
+              onPress={() => setEsFiado((f) => !f)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="book-outline"
+                size={15}
+                color={esFiado ? '#FFFFFF' : C.amarillo}
+              />
+              <Text style={[s.chipFiadoTexto, esFiado && s.chipFiadoTextoActivo]}>
+                Fiado
+              </Text>
+            </TouchableOpacity>
           </View>
+
+          {esFiado && (
+            <TextInput
+              style={s.inputFiador}
+              placeholder="¿A nombre de quién? Ej: Doña María"
+              placeholderTextColor={C.subtexto}
+              value={fiadorNombre}
+              onChangeText={setFiadorNombre}
+              autoCapitalize="words"
+            />
+          )}
 
           <View style={s.totalRow}>
             <Text style={s.totalLabel}>Total</Text>
@@ -270,7 +311,11 @@ export default function PantallaVentas() {
           )}
 
           <TouchableOpacity
-            style={[s.botonCobrar, procesando && s.botonCobrarDeshabilitado]}
+            style={[
+              s.botonCobrar,
+              esFiado && s.botonCobrarFiado,
+              procesando && s.botonCobrarDeshabilitado,
+            ]}
             onPress={cobrar}
             disabled={procesando}
             activeOpacity={0.85}
@@ -278,7 +323,9 @@ export default function PantallaVentas() {
             {procesando ? (
               <ActivityIndicator color={C.fondo} />
             ) : (
-              <Text style={s.botonCobrarTexto}>Cobrar {centavosACordobas(totalCarrito)}</Text>
+              <Text style={s.botonCobrarTexto}>
+                {esFiado ? 'Fiar' : 'Cobrar'} {centavosACordobas(totalCarrito)}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -395,8 +442,32 @@ const s = StyleSheet.create({
     padding: 20,
     gap: 12,
   },
-  metodosPago: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  metodosPago: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   metodoLabel: { fontSize: 14, color: C.subtexto, fontWeight: '600' },
+  chipFiado: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: C.amarillo,
+    backgroundColor: C.amarilloClaro,
+  },
+  chipFiadoActivo: { backgroundColor: C.amarillo, borderColor: C.amarillo },
+  chipFiadoTexto: { fontSize: 13, fontWeight: '700', color: C.amarillo },
+  chipFiadoTextoActivo: { color: '#FFFFFF' },
+  inputFiador: {
+    backgroundColor: C.fondo,
+    borderWidth: 1.5,
+    borderColor: C.amarillo,
+    borderRadius: 10,
+    padding: 12,
+    color: C.texto,
+    fontSize: 15,
+  },
+  botonCobrarFiado: { backgroundColor: C.amarillo },
   chipMetodo: {
     paddingHorizontal: 14,
     paddingVertical: 7,

@@ -26,10 +26,11 @@ export function useVentas() {
       items: ItemCarrito[],
       metodoPago: MetodoPago,
       descuento = 0,
-      notas?: string
+      notas?: string,
+      fiador?: string
     ): Promise<{ ok: boolean; error?: string; venta?: VentaConDetalle }> => {
       setCargando(true);
-      const result = await VentaRepository.crear({ items, metodo_pago: metodoPago, descuento, notas });
+      const result = await VentaRepository.crear({ items, metodo_pago: metodoPago, descuento, notas, fiador });
       setCargando(false);
       if (result.ok) {
         await cargarRecientes();

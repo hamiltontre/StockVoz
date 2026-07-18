@@ -6,24 +6,30 @@ import {
   StyleSheet,
   RefreshControl,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAlertas, type AlertaPorVencer } from '../../src/hooks/useAlertas';
+import { VentaRepository } from '../../src/database/repositories/VentaRepository';
 import { centavosACordobas } from '../../src/utils/money';
 import { formatearCantidadConUnidad } from '../../src/utils/cantidad';
 import type { SugerenciaCompra } from '../../src/utils/abastecimiento';
 import { COLORES as C } from '../../src/theme/colors';
-import type { Producto } from '../../src/types';
+import type { Producto, FiadorResumen } from '../../src/types';
 
-type TipoAlerta = 'compra' | 'vencido' | 'por_vencer' | 'stock_bajo';
+/** Un fiado con más días que esto se considera deuda vieja (se resalta). */
+const DIAS_FIADO_VIEJO = 7;
+
+type TipoAlerta = 'fiado' | 'compra' | 'vencido' | 'por_vencer' | 'stock_bajo';
 
 interface ItemAlerta {
   tipo: TipoAlerta;
   producto?: Producto;
   dias_para_vencer?: number;
   compra?: SugerenciaCompra;
+  fiado?: FiadorResumen;
 }
 
 /** Texto explicativo de POR QUÉ se sugiere la compra — transparencia ante todo. */
@@ -52,9 +58,35 @@ function formatearVencimiento(iso: string): string {
 
 export default function PantallaAlertas() {
   const router = useRouter();
-  const { porVencer, vencidos, stockBajo, compras, costoCompras, totalAlertas, recargar } = useAlertas();
+  const {
+    porVencer, vencidos, stockBajo, compras, costoCompras,
+    fiados, totalDeudaFiados, totalAlertas, recargar,
+  } = useAlertas();
+
+  // "Ya pagó": salda TODAS las ventas fiadas pendientes de la persona.
+  const cobrarFiado = useCallback((f: FiadorResumen) => {
+    Alert.alert(
+      `Cobrar a ${f.fiador_nombre}`,
+      `Debe ${centavosACordobas(f.total_deuda)} en ${f.cantidad_ventas} venta${f.cantidad_ventas !== 1 ? 's' : ''}. ¿Marcar todo como pagado?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Ya pagó ✓',
+          onPress: async () => {
+            const r = await VentaRepository.marcarFiadorPagado(f.fiador_nombre);
+            if (!r.ok) Alert.alert('Error', r.error);
+          },
+        },
+      ]
+    );
+  }, []);
 
   const secciones = [
+    fiados.length > 0 && {
+      titulo: `FIADOS PENDIENTES · ${centavosACordobas(totalDeudaFiados)}`,
+      color: C.amarillo,
+      data: fiados.map((f): ItemAlerta => ({ tipo: 'fiado', fiado: f })),
+    },
     compras.length > 0 && {
       titulo: costoCompras > 0
         ? `LISTA DE COMPRAS · ~${centavosACordobas(costoCompras)}`
@@ -84,7 +116,36 @@ export default function PantallaAlertas() {
   ].filter(Boolean) as Array<{ titulo: string; color: string; data: ItemAlerta[] }>;
 
   const renderItem = useCallback(({ item }: { item: ItemAlerta }) => {
-    const { producto, tipo, dias_para_vencer, compra } = item;
+    const { producto, tipo, dias_para_vencer, compra, fiado } = item;
+
+    // Tarjeta de fiado: quién debe, cuánto y hace cuánto. Tocar = cobrar.
+    if (tipo === 'fiado' && fiado) {
+      const esViejo = fiado.dias_deuda_mas_vieja >= DIAS_FIADO_VIEJO;
+      return (
+        <TouchableOpacity
+          style={[s.card, s.cardFiado, esViejo && s.cardFiadoViejo]}
+          onPress={() => cobrarFiado(fiado)}
+          activeOpacity={0.8}
+        >
+          <View style={[s.cardIcono, { backgroundColor: C.amarilloClaro }]}>
+            <Ionicons name="person-outline" size={20} color={esViejo ? C.rojo : C.amarillo} />
+          </View>
+          <View style={s.cardInfo}>
+            <Text style={s.cardNombre} numberOfLines={1}>{fiado.fiador_nombre}</Text>
+            <Text style={[s.cardDetalle, esViejo && { color: C.rojo, fontWeight: '600' }]}>
+              {fiado.cantidad_ventas} venta{fiado.cantidad_ventas !== 1 ? 's' : ''}
+              {fiado.dias_deuda_mas_vieja > 0
+                ? ` · debe desde hace ${fiado.dias_deuda_mas_vieja} día${fiado.dias_deuda_mas_vieja !== 1 ? 's' : ''}`
+                : ' · de hoy'}
+              {' · toca para cobrar'}
+            </Text>
+          </View>
+          <Text style={[s.fiadoDeuda, esViejo && { color: C.rojo }]}>
+            {centavosACordobas(fiado.total_deuda)}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
 
     // Tarjeta de compra sugerida: qué comprar, cuánto, y por qué.
     if (tipo === 'compra' && compra) {
@@ -151,7 +212,7 @@ export default function PantallaAlertas() {
         <Text style={s.cardPrecio}>{centavosACordobas(producto.precio)}</Text>
       </TouchableOpacity>
     );
-  }, [router]);
+  }, [router, cobrarFiado]);
 
   return (
     <SafeAreaView style={s.pantalla}>
@@ -166,7 +227,9 @@ export default function PantallaAlertas() {
 
       <SectionList
         sections={secciones}
-        keyExtractor={(item) => `${item.tipo}-${item.producto?.id ?? item.compra?.id}`}
+        keyExtractor={(item) =>
+          `${item.tipo}-${item.producto?.id ?? item.compra?.id ?? item.fiado?.fiador_nombre}`
+        }
         contentContainerStyle={s.lista}
         stickySectionHeadersEnabled={false}
         refreshControl={
@@ -248,6 +311,9 @@ const s = StyleSheet.create({
   compraDerecha: { alignItems: 'flex-end', gap: 2 },
   compraCantidad: { fontSize: 15, fontWeight: '800', color: C.acento },
   compraCosto: { fontSize: 12, color: C.subtexto },
+  cardFiado: { borderColor: C.amarillo, borderWidth: 1.5 },
+  cardFiadoViejo: { borderColor: C.rojo },
+  fiadoDeuda: { fontSize: 15, fontWeight: '800', color: C.amarillo },
   vacio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 80 },
   vacioTitulo: { fontSize: 17, fontWeight: '700', color: C.texto },
   vacioSub: { fontSize: 13, color: C.subtexto, textAlign: 'center', paddingHorizontal: 50 },

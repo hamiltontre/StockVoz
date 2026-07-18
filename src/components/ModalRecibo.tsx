@@ -130,9 +130,15 @@ StockVoz
               <View style={s.metaFila}>
                 <Text style={s.metaLabel}>Pago</Text>
                 <Text style={[s.metaValor, { textTransform: 'capitalize' }]}>
-                  {venta.metodo_pago}
+                  {venta.es_fiado ? 'Fiado' : venta.metodo_pago}
                 </Text>
               </View>
+              {venta.es_fiado && venta.fiador_nombre && (
+                <View style={s.metaFila}>
+                  <Text style={s.metaLabel}>A nombre de</Text>
+                  <Text style={s.metaValor}>{venta.fiador_nombre}</Text>
+                </View>
+              )}
 
               <Text style={s.divider}>{'─'.repeat(28)}</Text>
 

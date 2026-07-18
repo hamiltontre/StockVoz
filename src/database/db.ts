@@ -202,6 +202,20 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
       `ALTER TABLE productos ADD COLUMN precio_docena INTEGER NOT NULL DEFAULT 0 CHECK(precio_docena >= 0)`,
     ],
   },
+  {
+    // Migración v7 — ventas fiadas (el "cuaderno" de la pulpería).
+    // Una venta fiada es una venta normal (descuenta stock, cuenta en
+    // reportes) pero con deuda pendiente hasta que fiado_pagado_en tenga
+    // fecha. Se usa columna aparte (no metodo_pago) porque el CHECK de esa
+    // columna no se puede alterar sin reconstruir la tabla.
+    version: 7,
+    sentencias: [
+      `ALTER TABLE ventas ADD COLUMN es_fiado INTEGER NOT NULL DEFAULT 0 CHECK(es_fiado IN (0,1))`,
+      `ALTER TABLE ventas ADD COLUMN fiador_nombre TEXT`,
+      `ALTER TABLE ventas ADD COLUMN fiado_pagado_en TEXT`,
+      `CREATE INDEX IF NOT EXISTS idx_ventas_fiado ON ventas(es_fiado, fiado_pagado_en)`,
+    ],
+  },
 ];
 
 /**

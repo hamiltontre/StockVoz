@@ -58,7 +58,20 @@ export interface Venta {
   metodo_pago: MetodoPago;
   estado: EstadoVenta;
   notas: string | null;
+  // ─── Fiado (venta al crédito, el "cuaderno" de la pulpería) ───
+  es_fiado: boolean;
+  fiador_nombre: string | null;   // quién debe
+  fiado_pagado_en: string | null; // null = todavía debe
   creado_en: string;
+}
+
+/** Resumen del cuaderno de fiados: cuánto debe cada persona. */
+export interface FiadorResumen {
+  fiador_nombre: string;
+  total_deuda: number;      // centavos
+  cantidad_ventas: number;
+  /** Días desde el fiado MÁS VIEJO sin pagar de esta persona. */
+  dias_deuda_mas_vieja: number;
 }
 
 export interface DetalleVenta {
@@ -96,6 +109,8 @@ export interface CrearVentaDTO {
   descuento: number;
   metodo_pago: MetodoPago;
   notas?: string;
+  /** Nombre del fiador — su presencia marca la venta como fiada. */
+  fiador?: string;
 }
 
 export interface VentaConDetalle extends Venta {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
+import { VentaRepository } from '../database/repositories/VentaRepository';
 import { bus, EVENTOS } from '../utils/eventos';
 import {
   generarListaCompras,
@@ -7,7 +8,7 @@ import {
   type SugerenciaCompra,
   type DatosAbastecimiento,
 } from '../utils/abastecimiento';
-import type { Producto, UnidadProducto } from '../types';
+import type { Producto, UnidadProducto, FiadorResumen } from '../types';
 
 export interface AlertaPorVencer extends Producto {
   dias_para_vencer: number;
@@ -24,13 +25,15 @@ export function useAlertas() {
   const [stockBajo, setStockBajo] = useState<Producto[]>([]);
   const [compras, setCompras] = useState<SugerenciaCompra[]>([]);
   const [costoCompras, setCostoCompras] = useState(0);
+  const [fiados, setFiados] = useState<FiadorResumen[]>([]);
 
   const cargar = useCallback(async () => {
-    const [vencerR, vencidosR, stockR, abastR] = await Promise.all([
+    const [vencerR, vencidosR, stockR, abastR, fiadosR] = await Promise.all([
       ProductoRepository.obtenerPorVencer(30),
       ProductoRepository.obtenerVencidos(),
       ProductoRepository.obtenerStockBajo(),
       ProductoRepository.obtenerDatosAbastecimiento(VENTANA_DIAS),
+      VentaRepository.fiadosPendientes(),
     ]);
     if (vencerR.ok) setPorVencer(vencerR.data);
     if (vencidosR.ok) setVencidos(vencidosR.data);
@@ -44,16 +47,23 @@ export function useAlertas() {
       setCompras(sugerencias);
       setCostoCompras(costoTotal);
     }
+    if (fiadosR.ok) setFiados(fiadosR.data);
   }, []);
 
   useEffect(() => {
     cargar();
     const unsubStock = bus.on(EVENTOS.STOCK_CAMBIO, cargar);
     const unsubProd = bus.on(EVENTOS.PRODUCTO_CAMBIO, cargar);
-    return () => { unsubStock(); unsubProd(); };
+    const unsubFiado = bus.on(EVENTOS.FIADO_CAMBIO, cargar);
+    return () => { unsubStock(); unsubProd(); unsubFiado(); };
   }, [cargar]);
 
-  const totalAlertas = porVencer.length + vencidos.length + stockBajo.length;
+  const totalDeudaFiados = fiados.reduce((acc, f) => acc + f.total_deuda, 0);
+  const totalAlertas =
+    porVencer.length + vencidos.length + stockBajo.length + fiados.length;
 
-  return { porVencer, vencidos, stockBajo, compras, costoCompras, totalAlertas, recargar: cargar };
+  return {
+    porVencer, vencidos, stockBajo, compras, costoCompras,
+    fiados, totalDeudaFiados, totalAlertas, recargar: cargar,
+  };
 }
