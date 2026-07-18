@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
 import { COLORES as C } from '../theme/colors';
 import { centavosACordobas } from '../utils/money';
+import { formatearCantidadConUnidad } from '../utils/cantidad';
 import type { Producto } from '../types';
 
 interface Props {
@@ -107,7 +108,7 @@ export function ModalBuscarProducto({ visible, onCerrar, onSeleccionar }: Props)
                   </View>
                   <View style={[s.stockBadge, item.stock <= item.stock_minimo && s.stockBajo]}>
                     <Text style={[s.stockTexto, item.stock === 0 && { color: C.rojo }]}>
-                      {item.stock === 0 ? 'Agotado' : `${item.stock} uds`}
+                      {item.stock === 0 ? 'Agotado' : formatearCantidadConUnidad(item.stock, item.unidad)}
                     </Text>
                   </View>
                 </TouchableOpacity>
