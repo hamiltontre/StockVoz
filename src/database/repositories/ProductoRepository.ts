@@ -391,6 +391,53 @@ export const ProductoRepository = {
     }
   },
 
+  // ─── Abastecimiento (lista de compras sugerida) ──────────────────────────
+
+  /**
+   * Datos crudos por producto activo para calcular la lista de compras:
+   * unidades vendidas en la ventana reciente y antigüedad de su primera
+   * venta. El cálculo en sí vive en utils/abastecimiento.ts (módulo puro).
+   */
+  async obtenerDatosAbastecimiento(ventanaDias = 14): Promise<Result<Array<{
+    id: number; nombre: string; stock: number; stock_minimo: number;
+    unidad: string; precio_costo: number; precio_docena: number;
+    vendido_ventana: number; dias_desde_primera_venta: number | null;
+  }>>> {
+    try {
+      const db = await getDb();
+      const rows = await db.getAllAsync<{
+        id: number; nombre: string; stock: number; stock_minimo: number;
+        unidad: string; precio_costo: number; precio_docena: number;
+        vendido_ventana: number; dias_desde_primera_venta: number | null;
+      }>(
+        `SELECT
+           p.id, p.nombre, p.stock, p.stock_minimo, p.unidad,
+           COALESCE(p.precio_costo, 0)  AS precio_costo,
+           COALESCE(p.precio_docena, 0) AS precio_docena,
+           COALESCE((
+             SELECT SUM(dv.cantidad)
+             FROM detalle_ventas dv
+             INNER JOIN ventas v ON v.id = dv.venta_id
+             WHERE dv.producto_id = p.id
+               AND v.estado = 'completada'
+               AND v.creado_en >= datetime('now', ?)
+           ), 0) AS vendido_ventana,
+           (
+             SELECT CAST(julianday('now') - julianday(MIN(v.creado_en)) AS INTEGER)
+             FROM detalle_ventas dv
+             INNER JOIN ventas v ON v.id = dv.venta_id
+             WHERE dv.producto_id = p.id AND v.estado = 'completada'
+           ) AS dias_desde_primera_venta
+         FROM productos p
+         WHERE p.activo = 1`,
+        [`-${ventanaDias} days`]
+      );
+      return { ok: true, data: rows };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
   // ─── Rentabilidad (C-01) ─────────────────────────────────────────────────
 
   /**

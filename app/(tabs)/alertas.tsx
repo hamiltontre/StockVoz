@@ -12,15 +12,37 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAlertas, type AlertaPorVencer } from '../../src/hooks/useAlertas';
 import { centavosACordobas } from '../../src/utils/money';
+import { formatearCantidadConUnidad } from '../../src/utils/cantidad';
+import type { SugerenciaCompra } from '../../src/utils/abastecimiento';
 import { COLORES as C } from '../../src/theme/colors';
 import type { Producto } from '../../src/types';
 
-type TipoAlerta = 'vencido' | 'por_vencer' | 'stock_bajo';
+type TipoAlerta = 'compra' | 'vencido' | 'por_vencer' | 'stock_bajo';
 
 interface ItemAlerta {
   tipo: TipoAlerta;
-  producto: Producto;
+  producto?: Producto;
   dias_para_vencer?: number;
+  compra?: SugerenciaCompra;
+}
+
+/** Texto explicativo de POR QUÉ se sugiere la compra — transparencia ante todo. */
+function detalleCompra(c: SugerenciaCompra): string {
+  const partes: string[] = [];
+  if (c.motivo === 'agotado') {
+    partes.push('Agotado');
+  } else if (c.motivo === 'por_agotarse' && c.diasDeStock !== null) {
+    partes.push(`Se agota en ~${c.diasDeStock} día${c.diasDeStock === 1 ? '' : 's'}`);
+  } else {
+    partes.push('Bajo el stock mínimo');
+  }
+  if (c.velocidadDiaria > 0) {
+    partes.push(`vendés ~${c.velocidadDiaria}/día`);
+  }
+  if (c.confianza === 'aprendiendo') {
+    partes.push('aún aprendiendo tus ventas');
+  }
+  return partes.join(' · ');
 }
 
 function formatearVencimiento(iso: string): string {
@@ -30,9 +52,16 @@ function formatearVencimiento(iso: string): string {
 
 export default function PantallaAlertas() {
   const router = useRouter();
-  const { porVencer, vencidos, stockBajo, totalAlertas, recargar } = useAlertas();
+  const { porVencer, vencidos, stockBajo, compras, costoCompras, totalAlertas, recargar } = useAlertas();
 
   const secciones = [
+    compras.length > 0 && {
+      titulo: costoCompras > 0
+        ? `LISTA DE COMPRAS · ~${centavosACordobas(costoCompras)}`
+        : 'LISTA DE COMPRAS SUGERIDA',
+      color: C.acento,
+      data: compras.map((c): ItemAlerta => ({ tipo: 'compra', compra: c })),
+    },
     vencidos.length > 0 && {
       titulo: 'VENCIDOS',
       color: C.rojo,
@@ -55,7 +84,36 @@ export default function PantallaAlertas() {
   ].filter(Boolean) as Array<{ titulo: string; color: string; data: ItemAlerta[] }>;
 
   const renderItem = useCallback(({ item }: { item: ItemAlerta }) => {
-    const { producto, tipo, dias_para_vencer } = item;
+    const { producto, tipo, dias_para_vencer, compra } = item;
+
+    // Tarjeta de compra sugerida: qué comprar, cuánto, y por qué.
+    if (tipo === 'compra' && compra) {
+      return (
+        <TouchableOpacity
+          style={[s.card, s.cardCompra]}
+          onPress={() => router.push('/(tabs)/inventario')}
+          activeOpacity={0.8}
+        >
+          <View style={[s.cardIcono, { backgroundColor: C.acentoSuave }]}>
+            <Ionicons name="cart-outline" size={20} color={C.acento} />
+          </View>
+          <View style={s.cardInfo}>
+            <Text style={s.cardNombre} numberOfLines={1}>{compra.nombre}</Text>
+            <Text style={s.cardDetalle}>{detalleCompra(compra)}</Text>
+          </View>
+          <View style={s.compraDerecha}>
+            <Text style={s.compraCantidad}>
+              {formatearCantidadConUnidad(compra.cantidadSugerida, compra.unidad)}
+            </Text>
+            {compra.costoEstimado > 0 && (
+              <Text style={s.compraCosto}>{centavosACordobas(compra.costoEstimado)}</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    if (!producto) return null;
     return (
       <TouchableOpacity
         style={s.card}
@@ -108,7 +166,7 @@ export default function PantallaAlertas() {
 
       <SectionList
         sections={secciones}
-        keyExtractor={(item) => `${item.tipo}-${item.producto.id}`}
+        keyExtractor={(item) => `${item.tipo}-${item.producto?.id ?? item.compra?.id}`}
         contentContainerStyle={s.lista}
         stickySectionHeadersEnabled={false}
         refreshControl={
@@ -125,7 +183,7 @@ export default function PantallaAlertas() {
             <Ionicons name="checkmark-circle-outline" size={56} color={C.verde} />
             <Text style={s.vacioTitulo}>Todo en orden</Text>
             <Text style={s.vacioSub}>
-              Sin productos vencidos, por vencer ni con stock bajo.
+              Sin vencimientos, sin stock bajo y nada pendiente de comprar.
             </Text>
           </View>
         }
@@ -186,6 +244,10 @@ const s = StyleSheet.create({
   cardNombre: { fontSize: 15, fontWeight: '600', color: C.texto },
   cardDetalle: { fontSize: 12, color: C.subtexto, marginTop: 2 },
   cardPrecio: { fontSize: 14, fontWeight: '700', color: C.acento },
+  cardCompra: { borderColor: C.acento, borderWidth: 1.5 },
+  compraDerecha: { alignItems: 'flex-end', gap: 2 },
+  compraCantidad: { fontSize: 15, fontWeight: '800', color: C.acento },
+  compraCosto: { fontSize: 12, color: C.subtexto },
   vacio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 80 },
   vacioTitulo: { fontSize: 17, fontWeight: '700', color: C.texto },
   vacioSub: { fontSize: 13, color: C.subtexto, textAlign: 'center', paddingHorizontal: 50 },
