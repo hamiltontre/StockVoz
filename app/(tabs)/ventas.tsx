@@ -188,6 +188,9 @@ export default function PantallaVentas() {
           <Text style={s.headerTitulo}>Ventas</Text>
           <Text style={s.headerSub}>
             Hoy: {resumenHoy.total_ventas} ventas · {centavosACordobas(resumenHoy.total_monto)}
+            {resumenHoy.total_fiado > 0
+              ? ` (${centavosACordobas(resumenHoy.total_fiado)} fiado)`
+              : ''}
           </Text>
         </View>
         <View style={s.headerBotones}>

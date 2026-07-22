@@ -293,11 +293,20 @@ export const VentaRepository = {
     }
   },
 
-  async resumenHoy(): Promise<Result<{ total_ventas: number; total_monto: number }>> {
+  async resumenHoy(): Promise<Result<{
+    total_ventas: number;
+    total_monto: number;
+    total_fiado: number; // parte del monto que está fiada y AÚN no se cobra
+  }>> {
     try {
       const db = await getDb();
-      const row = await db.getFirstAsync<{ total_ventas: number; total_monto: number }>(
-        `SELECT COUNT(*) as total_ventas, COALESCE(SUM(total),0) as total_monto
+      const row = await db.getFirstAsync<{
+        total_ventas: number; total_monto: number; total_fiado: number;
+      }>(
+        `SELECT
+           COUNT(*) as total_ventas,
+           COALESCE(SUM(total),0) as total_monto,
+           COALESCE(SUM(CASE WHEN es_fiado = 1 AND fiado_pagado_en IS NULL THEN total ELSE 0 END),0) as total_fiado
          FROM ventas
          WHERE estado = 'completada'
            AND date(creado_en) = date('now')`

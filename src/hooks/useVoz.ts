@@ -144,9 +144,14 @@ export async function buscarProductosInteligente(palabras: string[]): Promise<Pr
   return [];
 }
 
-// Tope de seguridad: si el vendedor olvida apagar el micrófono, se corta solo.
 // Tope de seguridad: si el micrófono queda encendido, se corta solo.
 const MAX_ESCUCHA_MS = 60_000;
+
+// Diagnóstico de la sesión de voz — solo en desarrollo; en producción no
+// queremos el costo (ni el ruido) de serializar cada evento del micrófono.
+function logVoz(...args: unknown[]) {
+  if (__DEV__) console.warn('[DIAG voz]', ...args);
+}
 
 export function useVoz() {
   const [estado, setEstado] = useState<EstadoVoz>('inactivo');
@@ -214,7 +219,7 @@ export function useVoz() {
     const texto = e.value?.find((v) => v && v.trim().length > 0)?.trim() ?? '';
     if (texto && texto !== parcialRef.current) {
       parcialRef.current = texto;
-      console.warn('[DIAG voz] onSpeechPartialResults →', JSON.stringify(texto));
+      logVoz('onSpeechPartialResults →', JSON.stringify(texto));
     }
   }, []);
 
@@ -228,7 +233,7 @@ export function useVoz() {
       escuchandoRef.current = false;
       limpiarTimers();
       if (parcialRef.current) {
-        console.warn('[DIAG voz] sin resultado tras onSpeechEnd → usando parcial');
+        logVoz('sin resultado tras onSpeechEnd → usando parcial');
         procesadoRef.current = true;
         procesar(parcialRef.current);
       } else {
@@ -238,13 +243,13 @@ export function useVoz() {
   }, [procesar, limpiarTimers]);
 
   const handleFinDeVoz = useCallback(() => {
-    console.warn('[DIAG voz] onSpeechEnd');
+    logVoz('onSpeechEnd');
     if (!procesadoRef.current) programarGracia();
   }, [programarGracia]);
 
   // Resultado final de la sesión (fin natural por silencio O tras detener).
   const handleResultados = useCallback((e: { value?: string[] }) => {
-    console.warn('[DIAG voz] onSpeechResults e.value=', JSON.stringify(e.value));
+    logVoz('onSpeechResults e.value=', JSON.stringify(e.value));
     escuchandoRef.current = false;
     limpiarTimers();
     const final = e.value?.find((v) => v && v.trim().length > 0)?.trim() ?? '';
@@ -256,7 +261,7 @@ export function useVoz() {
     // Resultado final vacío o nulo (visto en algunos OEMs con este motor):
     // rescatar el último parcial en vez de descartar lo dicho.
     if (!procesadoRef.current && parcialRef.current) {
-      console.warn('[DIAG voz] final vacío → usando parcial:', JSON.stringify(parcialRef.current));
+      logVoz('final vacío → usando parcial:', JSON.stringify(parcialRef.current));
       procesadoRef.current = true;
       procesar(parcialRef.current);
       return;
@@ -265,7 +270,7 @@ export function useVoz() {
   }, [procesar, limpiarTimers]);
 
   const handleError = useCallback((e: { error?: { message?: string; code?: string } }) => {
-    console.warn('[DIAG voz] onSpeechError e=', JSON.stringify(e));
+    logVoz('onSpeechError e=', JSON.stringify(e));
     escuchandoRef.current = false;
     limpiarTimers();
     if (procesadoRef.current) return; // la sesión ya se resolvió con parcial/final
@@ -273,7 +278,7 @@ export function useVoz() {
     // 6=speech timeout, 7=no match: si Google alcanzó a transcribir parciales,
     // lo dicho es rescatable aunque el "final" haya fallado.
     if ((code === '6' || code === '7') && parcialRef.current) {
-      console.warn('[DIAG voz] error', code, '→ rescatando parcial:', JSON.stringify(parcialRef.current));
+      logVoz('error', code, '→ rescatando parcial:', JSON.stringify(parcialRef.current));
       procesadoRef.current = true;
       procesar(parcialRef.current);
       return;

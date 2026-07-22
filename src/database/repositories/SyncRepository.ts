@@ -19,10 +19,20 @@ export const SyncRepository = {
   ): Promise<Result<void>> {
     try {
       const db = await getDb();
-      await db.runAsync(
+      const result = await db.runAsync(
         'INSERT INTO sync_queue (tabla, operacion, payload) VALUES (?, ?, ?)',
         [tabla, operacion, JSON.stringify(payload)]
       );
+      // Poda local: un negocio del plan básico (sin nube) nunca sincroniza,
+      // así que sin esto la cola crecería para siempre. Cada ~50 inserts se
+      // recorta a las 5000 entradas más recientes — más que suficientes para
+      // ponerse al día si el dueño se registra en la nube después.
+      if (result.lastInsertRowId % 50 === 0) {
+        await db.runAsync(
+          `DELETE FROM sync_queue
+           WHERE id NOT IN (SELECT id FROM sync_queue ORDER BY id DESC LIMIT 5000)`
+        );
+      }
       return { ok: true, data: undefined };
     } catch (e) {
       return { ok: false, error: String(e) };

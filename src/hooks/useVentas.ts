@@ -6,7 +6,7 @@ export function useVentas() {
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resumenHoy, setResumenHoy] = useState({ total_ventas: 0, total_monto: 0 });
+  const [resumenHoy, setResumenHoy] = useState({ total_ventas: 0, total_monto: 0, total_fiado: 0 });
 
   const cargarRecientes = useCallback(async () => {
     setCargando(true);
