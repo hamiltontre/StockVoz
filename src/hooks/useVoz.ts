@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
-import { parsearMultiplesProductos } from '../utils/vozParser';
+import { parsearMultiplesProductos, seleccionarPorNombre } from '../utils/vozParser';
 import type { Producto } from '../types';
 
 // Re-export para compatibilidad: el parser vive en utils/vozParser (módulo
@@ -96,10 +96,11 @@ async function asegurarPermisoMicrofono(): Promise<boolean> {
 /**
  * Estrategia de búsqueda en capas (de más específica a más flexible):
  *
- * Nivel 0: nombre que contiene TODAS las palabras dichas — "pollo pierna"
- *          matchea "Pierna de pollo", nunca "Consomé de pollo" (le falta
- *          una palabra). Es el nivel más específico cuando se dicen 2+.
- * Nivel 1: coincidencia exacta de palabra clave normalizada
+ * Nivel 0: LO DICHO MANDA — si lo dicho es el nombre de un producto que
+ *          existe (exacto en orden, o todas las palabras con tolerancia a
+ *          plurales), ese gana sobre cualquier sinónimo de otro producto.
+ *          "pierna de pollo" → "Pierna de pollo", nunca "Consomé de pollo".
+ * Nivel 1: coincidencia exacta de palabra clave normalizada (sinónimos)
  * Nivel 2: palabra clave que EMPIEZA con el término (frijol → frijoles)
  * Nivel 3: nombre de producto que contiene el término
  * Nivel 4: combinación de 2 palabras seguidas ("coca cola")
@@ -107,10 +108,12 @@ async function asegurarPermisoMicrofono(): Promise<boolean> {
 export async function buscarProductosInteligente(palabras: string[]): Promise<Producto[]> {
   if (palabras.length === 0) return [];
 
-  // Nivel 0: todas las palabras en el nombre (solo con 2+ palabras dichas)
-  if (palabras.length >= 2) {
-    const todas = await ProductoRepository.buscarPorNombreTodasLasPalabras(palabras);
-    if (todas.ok && todas.data.length > 0) return todas.data;
+  // Nivel 0: comparación por nombre en memoria (inventarios pequeños,
+  // ≤500 productos) — maneja acentos y plurales mejor que LIKE en SQL.
+  const todosR = await ProductoRepository.obtenerTodos();
+  if (todosR.ok) {
+    const porNombre = seleccionarPorNombre(palabras, todosR.data);
+    if (porNombre.length > 0) return porNombre;
   }
 
   // Nivel 1 y 2: palabras clave (más precisas que el nombre)

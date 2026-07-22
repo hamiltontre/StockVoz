@@ -54,6 +54,66 @@ export interface SegmentoVoz {
   enDocenas: boolean;
 }
 
+// ─── Selección por nombre: "lo dicho manda" ─────────────────────────────────
+
+/**
+ * ¿La palabra dicha corresponde a una palabra del nombre?
+ * Tolera plurales en ambas direcciones: pierna↔piernas, frijol↔frijoles.
+ * El límite de 2 caracteres evita falsos positivos (pan ≠ panela).
+ */
+export function palabraCoincide(dicha: string, delNombre: string): boolean {
+  if (dicha === delNombre) return true;
+  const [corta, larga] =
+    dicha.length <= delNombre.length ? [dicha, delNombre] : [delNombre, dicha];
+  if (corta.length < 3) return false;
+  return larga.startsWith(corta) && larga.length - corta.length <= 2;
+}
+
+/** Núcleo del nombre: normalizado y sin artículos/preposiciones.
+ *  "Pierna de pollo" → "pierna pollo" (comparable con lo dicho). */
+function nucleoNombre(nombre: string): string {
+  return normalizarTexto(nombre)
+    .split(/\s+/)
+    .filter((t) => t && !PALABRAS_IGNORAR.has(t))
+    .join(' ');
+}
+
+/**
+ * Regla de oro del matching: LO DICHO MANDA.
+ * Si lo que el vendedor dijo corresponde al NOMBRE de un producto que
+ * existe, ese producto gana — sin importar cuánto se parezca a sinónimos
+ * de otros. Los sinónimos (palabras clave) solo deciden cuando lo dicho
+ * no es el nombre de nada.
+ *
+ * 1) Coincidencia EXACTA de núcleo (mismas palabras, mismo orden):
+ *    "pierna de pollo" → "Pierna de pollo" (no "Pollo pierna").
+ * 2) Nombres que contienen TODAS las palabras dichas (tolerando
+ *    plurales), el nombre más corto primero:
+ *    "piernas de pollo" → los productos de pierna, nunca "Consomé de pollo".
+ * Con una sola palabra solo aplica el nivel exacto — así los sinónimos
+ * deliberados del dueño siguen mandando en dichos de una palabra.
+ */
+export function seleccionarPorNombre<T extends { nombre: string }>(
+  palabras: string[],
+  productos: T[]
+): T[] {
+  if (palabras.length === 0) return [];
+  const frase = palabras.join(' ');
+  const conNucleo = productos.map((p) => ({ p, nucleo: nucleoNombre(p.nombre) }));
+
+  const exactos = conNucleo.filter((c) => c.nucleo === frase);
+  if (exactos.length > 0) return exactos.map((c) => c.p);
+
+  if (palabras.length < 2) return [];
+  return conNucleo
+    .filter((c) => {
+      const tokens = c.nucleo.split(' ');
+      return palabras.every((pd) => tokens.some((tn) => palabraCoincide(pd, tn)));
+    })
+    .sort((a, b) => a.nucleo.length - b.nucleo.length)
+    .map((c) => c.p);
+}
+
 /**
  * Extrae cantidad y palabras candidatas de la transcripción (UN producto).
  * Ejemplos:
