@@ -102,11 +102,17 @@ StockVoz
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCerrar}>
       <View style={s.overlay}>
         <View style={s.contenedor}>
-          {/* Header del modal */}
+          {/* Header del modal — anaranjado cuando es fiado (dinero pendiente) */}
           <View style={s.header}>
             <View style={s.exitoBadge}>
-              <Ionicons name="checkmark-circle" size={20} color={C.verde} />
-              <Text style={s.exitoTexto}>Venta registrada</Text>
+              <Ionicons
+                name={venta.es_fiado ? 'book' : 'checkmark-circle'}
+                size={20}
+                color={venta.es_fiado ? C.amarillo : C.verde}
+              />
+              <Text style={[s.exitoTexto, venta.es_fiado && { color: C.amarillo }]}>
+                {venta.es_fiado ? 'Venta fiada' : 'Venta registrada'}
+              </Text>
             </View>
             <TouchableOpacity onPress={onCerrar}>
               <Ionicons name="close" size={26} color={C.subtexto} />
@@ -172,7 +178,9 @@ StockVoz
               )}
               <View style={[s.totalFila, s.totalFinal]}>
                 <Text style={s.totalFinalLabel}>TOTAL</Text>
-                <Text style={s.totalFinalValor}>{centavosACordobas(venta.total)}</Text>
+                <Text style={[s.totalFinalValor, venta.es_fiado && { color: C.amarillo }]}>
+                  {centavosACordobas(venta.total)}
+                </Text>
               </View>
 
               <Text style={s.gracias}>¡Gracias por su compra!</Text>
@@ -182,14 +190,24 @@ StockVoz
             {/* Ganancia — solo visible para el admin, fuera del recibo
                 que se comparte al cliente */}
             {esAdmin && ganancia !== null && (
-              <View style={s.gananciaBox}>
+              <View style={[s.gananciaBox, venta.es_fiado && s.gananciaBoxFiado]}>
                 <View style={s.gananciaHeader}>
-                  <Ionicons name="lock-closed-outline" size={13} color={C.verde} />
-                  <Text style={s.gananciaTitulo}>Solo para el dueño</Text>
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={13}
+                    color={venta.es_fiado ? C.amarillo : C.verde}
+                  />
+                  <Text style={[s.gananciaTitulo, venta.es_fiado && { color: C.amarillo }]}>
+                    Solo para el dueño
+                  </Text>
                 </View>
                 <View style={s.gananciaFila}>
-                  <Text style={s.gananciaLabel}>Ganancia de esta venta</Text>
-                  <Text style={s.gananciaValor}>{centavosACordobas(ganancia)}</Text>
+                  <Text style={s.gananciaLabel}>
+                    {venta.es_fiado ? 'Ganancia (cuando pague)' : 'Ganancia de esta venta'}
+                  </Text>
+                  <Text style={[s.gananciaValor, venta.es_fiado && { color: C.amarillo }]}>
+                    {centavosACordobas(ganancia)}
+                  </Text>
                 </View>
               </View>
             )}
@@ -279,6 +297,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: C.verde,
     padding: 14, marginTop: 12,
   },
+  gananciaBoxFiado: { backgroundColor: C.amarilloClaro, borderColor: C.amarillo },
   gananciaHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
   gananciaTitulo: {
     color: C.verde, fontSize: 10, fontWeight: '800',

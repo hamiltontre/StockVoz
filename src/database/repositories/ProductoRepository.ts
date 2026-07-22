@@ -328,6 +328,29 @@ export const ProductoRepository = {
     }
   },
 
+  /**
+   * Nombre que contiene TODAS las palabras dichas (en cualquier orden).
+   * "pollo pierna" matchea "Pollo pierna" Y "Pierna de pollo", pero NO
+   * "Consomé de pollo" (le falta "pierna"). Prioriza el nombre más corto
+   * (menos palabras extra = coincidencia más específica).
+   */
+  async buscarPorNombreTodasLasPalabras(palabras: string[]): Promise<Result<Producto[]>> {
+    try {
+      if (palabras.length === 0) return { ok: true, data: [] };
+      const db = await getDb();
+      const condiciones = palabras.map(() => 'nombre LIKE ?').join(' AND ');
+      const rows = await db.getAllAsync<Record<string, unknown>>(
+        `SELECT * FROM productos
+         WHERE activo = 1 AND ${condiciones}
+         ORDER BY length(nombre) ASC, nombre ASC`,
+        palabras.map((p) => `%${p}%`)
+      );
+      return { ok: true, data: rows.map(rowToProducto) };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
   /** Prefijo: "frijol" matchea "frijoles", "frijolito"  */
   async buscarPorPalabraClavePrefijo(prefijo: string): Promise<Result<Producto[]>> {
     try {

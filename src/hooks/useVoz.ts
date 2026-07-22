@@ -96,6 +96,9 @@ async function asegurarPermisoMicrofono(): Promise<boolean> {
 /**
  * Estrategia de búsqueda en capas (de más específica a más flexible):
  *
+ * Nivel 0: nombre que contiene TODAS las palabras dichas — "pollo pierna"
+ *          matchea "Pierna de pollo", nunca "Consomé de pollo" (le falta
+ *          una palabra). Es el nivel más específico cuando se dicen 2+.
  * Nivel 1: coincidencia exacta de palabra clave normalizada
  * Nivel 2: palabra clave que EMPIEZA con el término (frijol → frijoles)
  * Nivel 3: nombre de producto que contiene el término
@@ -103,6 +106,12 @@ async function asegurarPermisoMicrofono(): Promise<boolean> {
  */
 export async function buscarProductosInteligente(palabras: string[]): Promise<Producto[]> {
   if (palabras.length === 0) return [];
+
+  // Nivel 0: todas las palabras en el nombre (solo con 2+ palabras dichas)
+  if (palabras.length >= 2) {
+    const todas = await ProductoRepository.buscarPorNombreTodasLasPalabras(palabras);
+    if (todas.ok && todas.data.length > 0) return todas.data;
+  }
 
   // Nivel 1 y 2: palabras clave (más precisas que el nombre)
   for (const palabra of palabras) {

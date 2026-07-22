@@ -15,6 +15,8 @@ import { useVentas } from '../../src/hooks/useVentas';
 import { useVoz } from '../../src/hooks/useVoz';
 import { useSesion } from '../../src/context/SesionContext';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
+import { VentaRepository } from '../../src/database/repositories/VentaRepository';
+import { normalizarTexto } from '../../src/utils/texto';
 import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
 import {
   calcularSubtotalLinea,
@@ -32,6 +34,7 @@ export default function PantallaVentas() {
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
   const [esFiado, setEsFiado] = useState(false);
   const [fiadorNombre, setFiadorNombre] = useState('');
+  const [nombresFiadores, setNombresFiadores] = useState<string[]>([]);
   const [procesando, setProcesando] = useState(false);
   const [reciboVisible, setReciboVisible] = useState(false);
   const [ventaRecibo, setVentaRecibo] = useState<VentaConDetalle | null>(null);
@@ -44,6 +47,28 @@ export default function PantallaVentas() {
   useEffect(() => {
     cargarRecientes();
   }, [cargarRecientes]);
+
+  // Al activar el fiado, cargar los nombres usados antes para autocompletar
+  // y no crear perfiles duplicados ("María" vs "maria").
+  useEffect(() => {
+    if (!esFiado) return;
+    VentaRepository.nombresFiadores().then((r) => {
+      if (r.ok) setNombresFiadores(r.data);
+    });
+  }, [esFiado]);
+
+  // Sugerencias: nombres que contienen lo escrito (sin acentos/mayúsculas),
+  // excluyendo el que ya está escrito exactamente igual.
+  const sugerenciasFiador = esFiado
+    ? nombresFiadores
+        .filter((n) => {
+          const nNorm = normalizarTexto(n);
+          const inputNorm = normalizarTexto(fiadorNombre);
+          if (!inputNorm) return true; // sin texto: mostrar los recientes
+          return nNorm.includes(inputNorm) && nNorm !== inputNorm;
+        })
+        .slice(0, 3)
+    : [];
 
   // Cuando el motor de voz devuelve la lista, agregar todos los productos
   // reconocidos al carrito de una sola pasada.
@@ -288,14 +313,31 @@ export default function PantallaVentas() {
           </View>
 
           {esFiado && (
-            <TextInput
-              style={s.inputFiador}
-              placeholder="¿A nombre de quién? Ej: Doña María"
-              placeholderTextColor={C.subtexto}
-              value={fiadorNombre}
-              onChangeText={setFiadorNombre}
-              autoCapitalize="words"
-            />
+            <View>
+              <TextInput
+                style={s.inputFiador}
+                placeholder="¿A nombre de quién? Ej: Doña María"
+                placeholderTextColor={C.subtexto}
+                value={fiadorNombre}
+                onChangeText={setFiadorNombre}
+                autoCapitalize="words"
+              />
+              {sugerenciasFiador.length > 0 && (
+                <View style={s.sugerenciasFiador}>
+                  {sugerenciasFiador.map((n) => (
+                    <TouchableOpacity
+                      key={n}
+                      style={s.sugerenciaChip}
+                      onPress={() => setFiadorNombre(n)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="person" size={12} color={C.amarillo} />
+                      <Text style={s.sugerenciaTexto}>{n}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
           )}
 
           <View style={s.totalRow}>
@@ -468,6 +510,19 @@ const s = StyleSheet.create({
     fontSize: 15,
   },
   botonCobrarFiado: { backgroundColor: C.amarillo },
+  sugerenciasFiador: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  sugerenciaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: C.amarilloClaro,
+    borderWidth: 1,
+    borderColor: C.amarillo,
+  },
+  sugerenciaTexto: { fontSize: 13, fontWeight: '600', color: C.texto },
   chipMetodo: {
     paddingHorizontal: 14,
     paddingVertical: 7,

@@ -11,7 +11,8 @@ import { useSesion } from '../../src/context/SesionContext';
 import { VentaRepository } from '../../src/database/repositories/VentaRepository';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
 import { centavosACordobas } from '../../src/utils/money';
-import type { Venta, Producto } from '../../src/types';
+import { ModalRecibo } from '../../src/components/ModalRecibo';
+import type { Venta, Producto, VentaConDetalle } from '../../src/types';
 
 import { COLORES as C } from '../../src/theme/colors';
 type Periodo = 7 | 30;
@@ -63,6 +64,19 @@ export default function PantallaReportes() {
   } | null>(null);
   const [cargandoMetricas, setCargandoMetricas] = useState(true);
   const [vista, setVista] = useState<'resumen' | 'historial'>('resumen');
+  // Detalle emergente al tocar una venta del historial
+  const [detalleVenta, setDetalleVenta] = useState<VentaConDetalle | null>(null);
+  const [detalleVisible, setDetalleVisible] = useState(false);
+
+  const abrirDetalleVenta = useCallback(async (venta: Venta) => {
+    const r = await VentaRepository.obtenerConDetalle(venta.id);
+    if (r.ok && r.data) {
+      setDetalleVenta(r.data);
+      setDetalleVisible(true);
+    } else {
+      Alert.alert('Error', 'No se pudo cargar el detalle de la venta');
+    }
+  }, []);
 
   const cargarMetricas = useCallback(async () => {
     setCargandoMetricas(true);
@@ -254,15 +268,17 @@ export default function PantallaReportes() {
                       <View key={m.metodo_pago} style={[s.filaSimple, i < metodosPago.length - 1 && s.filaDivider]}>
                         <Ionicons
                           name={m.metodo_pago === 'efectivo' ? 'cash-outline'
+                            : m.metodo_pago === 'fiado' ? 'book-outline'
                             : m.metodo_pago === 'tarjeta' ? 'card-outline'
                             : 'swap-horizontal-outline'}
-                          size={18} color={C.subtexto}
+                          size={18}
+                          color={m.metodo_pago === 'fiado' ? C.amarillo : C.subtexto}
                         />
                         <Text style={[s.filaLabel, { flex: 1, textTransform: 'capitalize' }]}>
                           {m.metodo_pago}
                         </Text>
                         <Text style={s.filaSub}>{m.total_ventas} ventas</Text>
-                        <Text style={[s.filaLabel, { color: C.acento }]}>
+                        <Text style={[s.filaLabel, { color: m.metodo_pago === 'fiado' ? C.amarillo : C.acento }]}>
                           {centavosACordobas(m.total_monto)}
                         </Text>
                       </View>
@@ -343,14 +359,27 @@ export default function PantallaReportes() {
               </View>
             }
             renderItem={({ item }) => (
-              <View style={[s.ventaCard, item.estado === 'anulada' && { opacity: 0.5 }]}>
+              <TouchableOpacity
+                style={[s.ventaCard, item.estado === 'anulada' && { opacity: 0.5 }]}
+                onPress={() => abrirDetalleVenta(item)}
+                activeOpacity={0.75}
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={s.filaLabel}>Venta #{item.id}</Text>
                   <Text style={s.filaSub}>{formatearFecha(item.creado_en)}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                    <View style={s.metodoBadge}>
-                      <Text style={s.metodoBadgeTexto}>{item.metodo_pago}</Text>
-                    </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                    {item.es_fiado ? (
+                      <View style={s.fiadoBadge}>
+                        <Ionicons name="book-outline" size={11} color={C.amarillo} />
+                        <Text style={s.fiadoBadgeTexto}>
+                          {item.fiado_pagado_en ? 'Fiado · pagado' : `Fiado · ${item.fiador_nombre ?? ''}`}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={s.metodoBadge}>
+                        <Text style={s.metodoBadgeTexto}>{item.metodo_pago}</Text>
+                      </View>
+                    )}
                     {item.estado === 'anulada' && (
                       <View style={s.anuladaBadge}>
                         <Text style={s.anuladaTexto}>ANULADA</Text>
@@ -359,20 +388,28 @@ export default function PantallaReportes() {
                   </View>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 8 }}>
-                  <Text style={{ fontSize: 17, fontWeight: '800', color: C.texto }}>
+                  <Text style={{ fontSize: 17, fontWeight: '800', color: item.es_fiado && !item.fiado_pagado_en ? C.amarillo : C.texto }}>
                     {centavosACordobas(item.total)}
                   </Text>
                   {item.estado === 'completada' && (
-                    <TouchableOpacity onPress={() => confirmarAnular(item)}>
+                    <TouchableOpacity onPress={() => confirmarAnular(item)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                       <Ionicons name="close-circle-outline" size={20} color={C.rojo} />
                     </TouchableOpacity>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             )}
           />
         )
       )}
+
+      {/* Detalle emergente de una venta del historial (reusa el recibo) */}
+      <ModalRecibo
+        venta={detalleVenta}
+        visible={detalleVisible}
+        onCerrar={() => { setDetalleVisible(false); setDetalleVenta(null); }}
+        esAdmin={sesion?.usuario.rol === 'admin'}
+      />
     </SafeAreaView>
   );
 }
@@ -464,6 +501,12 @@ const s = StyleSheet.create({
     paddingVertical: 3, borderRadius: 6,
   },
   metodoBadgeTexto: { color: C.acento, fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
+  fiadoBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: C.amarilloClaro, paddingHorizontal: 8,
+    paddingVertical: 3, borderRadius: 6,
+  },
+  fiadoBadgeTexto: { color: C.amarillo, fontSize: 11, fontWeight: '700' },
   anuladaBadge: {
     backgroundColor: C.rojoClaro, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
   },

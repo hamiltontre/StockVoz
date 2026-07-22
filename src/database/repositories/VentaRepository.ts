@@ -212,6 +212,29 @@ export const VentaRepository = {
   },
 
   /**
+   * Nombres de fiadores usados antes (pendientes o ya pagados), el más
+   * reciente primero. Alimenta el autocompletado al fiar: reusar el mismo
+   * nombre evita duplicar perfiles ("María" vs "maria" vs "Maria L.").
+   */
+  async nombresFiadores(limite = 50): Promise<Result<string[]>> {
+    try {
+      const db = await getDb();
+      const rows = await db.getAllAsync<{ fiador_nombre: string }>(
+        `SELECT fiador_nombre
+         FROM ventas
+         WHERE es_fiado = 1 AND fiador_nombre IS NOT NULL
+         GROUP BY fiador_nombre COLLATE NOCASE
+         ORDER BY MAX(creado_en) DESC
+         LIMIT ?`,
+        [limite]
+      );
+      return { ok: true, data: rows.map((r) => r.fiador_nombre) };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  /**
    * Marca como pagadas TODAS las ventas fiadas pendientes de una persona
    * (el caso típico: llega y paga su cuenta completa).
    * Devuelve cuántas ventas se saldaron.
@@ -368,17 +391,19 @@ export const VentaRepository = {
   }>>> {
     try {
       const db = await getDb();
+      // El fiado se reporta como su propio "método": el dueño necesita ver
+      // cuánto entró en efectivo vs cuánto está fiado (en la calle).
       const rows = await db.getAllAsync<{
         metodo_pago: string; total_ventas: number; total_monto: number;
       }>(
         `SELECT
-           metodo_pago,
+           CASE WHEN es_fiado = 1 THEN 'fiado' ELSE metodo_pago END as metodo_pago,
            COUNT(*) as total_ventas,
            COALESCE(SUM(total),0) as total_monto
          FROM ventas
          WHERE estado = 'completada'
            AND date(creado_en) >= date('now', '-30 days')
-         GROUP BY metodo_pago
+         GROUP BY CASE WHEN es_fiado = 1 THEN 'fiado' ELSE metodo_pago END
          ORDER BY total_monto DESC`
       );
       return { ok: true, data: rows };

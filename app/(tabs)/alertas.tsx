@@ -32,21 +32,18 @@ interface ItemAlerta {
   fiado?: FiadorResumen;
 }
 
-/** Texto explicativo de POR QUÉ se sugiere la compra — transparencia ante todo. */
+/** Texto explicativo de POR QUÉ se sugiere la compra — corto y claro. */
 function detalleCompra(c: SugerenciaCompra): string {
   const partes: string[] = [];
   if (c.motivo === 'agotado') {
     partes.push('Agotado');
   } else if (c.motivo === 'por_agotarse' && c.diasDeStock !== null) {
-    partes.push(`Se agota en ~${c.diasDeStock} día${c.diasDeStock === 1 ? '' : 's'}`);
+    partes.push(`Se agota en ${c.diasDeStock} día${c.diasDeStock === 1 ? '' : 's'}`);
   } else {
-    partes.push('Bajo el stock mínimo');
+    partes.push('Bajo el mínimo');
   }
   if (c.velocidadDiaria > 0) {
-    partes.push(`vendés ~${c.velocidadDiaria}/día`);
-  }
-  if (c.confianza === 'aprendiendo') {
-    partes.push('aún aprendiendo tus ventas');
+    partes.push(`vendés ${c.velocidadDiaria}/día`);
   }
   return partes.join(' · ');
 }
@@ -89,7 +86,7 @@ export default function PantallaAlertas() {
     },
     compras.length > 0 && {
       titulo: costoCompras > 0
-        ? `LISTA DE COMPRAS · ~${centavosACordobas(costoCompras)}`
+        ? `LISTA DE COMPRAS · ${centavosACordobas(costoCompras)}`
         : 'LISTA DE COMPRAS SUGERIDA',
       color: C.acento,
       data: compras.map((c): ItemAlerta => ({ tipo: 'compra', compra: c })),
