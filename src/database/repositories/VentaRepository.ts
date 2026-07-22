@@ -212,6 +212,37 @@ export const VentaRepository = {
   },
 
   /**
+   * Estado de cuenta de un fiador: TODAS sus ventas fiadas pendientes con
+   * sus productos, de la más vieja a la más nueva — para responder
+   * "¿por qué debo tanto?" sin buscar recibo por recibo en el historial.
+   */
+  async detalleFiador(fiadorNombre: string): Promise<Result<VentaConDetalle[]>> {
+    try {
+      const db = await getDb();
+      const ventaRows = await db.getAllAsync<Record<string, unknown>>(
+        `SELECT * FROM ventas
+         WHERE es_fiado = 1
+           AND fiado_pagado_en IS NULL
+           AND estado = 'completada'
+           AND fiador_nombre = ? COLLATE NOCASE
+         ORDER BY creado_en ASC`,
+        [fiadorNombre]
+      );
+      const resultado: VentaConDetalle[] = [];
+      for (const row of ventaRows) {
+        const detalleRows = await db.getAllAsync<Record<string, unknown>>(
+          'SELECT * FROM detalle_ventas WHERE venta_id = ?',
+          [row.id as number]
+        );
+        resultado.push({ ...rowToVenta(row), items: detalleRows.map(rowToDetalle) });
+      }
+      return { ok: true, data: resultado };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  /**
    * Nombres de fiadores usados antes (pendientes o ya pagados), el más
    * reciente primero. Alimenta el autocompletado al fiar: reusar el mismo
    * nombre evita duplicar perfiles ("María" vs "maria" vs "Maria L.").

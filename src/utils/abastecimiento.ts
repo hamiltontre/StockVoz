@@ -15,12 +15,20 @@ import { UNIDADES_FRACCIONABLES } from './cantidad';
 
 /** Ventana de historial que se observa para medir velocidad de venta. */
 export const VENTANA_DIAS = 14;
-/** Se dispara la sugerencia cuando queda stock para menos de estos días. */
-export const UMBRAL_DIAS = 7;
-/** La compra sugerida busca cubrir estos días de venta. */
-export const COBERTURA_DIAS = 14;
 /** Con menos días de historial que esto, la sugerencia se marca "aprendiendo". */
 export const DIAS_CONFIANZA = 7;
+
+/**
+ * Cada cuánto se abastece el negocio. La mayoría de pulperías compran
+ * SEMANALMENTE (default); ferreterías grandes a veces mensual. El periodo
+ * define ambas cosas: cuándo alertar (no te alcanza para el periodo) y
+ * cuánto sugerir comprar (lo necesario para cubrirlo).
+ */
+export type PeriodoCompras = 'semanal' | 'mensual';
+export const DIAS_PERIODO: Record<PeriodoCompras, number> = {
+  semanal: 7,
+  mensual: 30,
+};
 
 export interface DatosAbastecimiento {
   id: number;
@@ -75,7 +83,10 @@ function redondearCantidad(
 }
 
 /** Evalúa UN producto; null = no hace falta comprarlo todavía. */
-export function evaluarProducto(p: DatosAbastecimiento): SugerenciaCompra | null {
+export function evaluarProducto(
+  p: DatosAbastecimiento,
+  periodoDias: number = DIAS_PERIODO.semanal
+): SugerenciaCompra | null {
   // Días realmente observados: si el producto empezó a venderse hace 4 días,
   // dividir entre 4 (no entre 14) para no subestimar su velocidad real.
   const diasObservados =
@@ -93,18 +104,18 @@ export function evaluarProducto(p: DatosAbastecimiento): SugerenciaCompra | null
   let motivo: MotivoCompra | null = null;
   if (p.stock <= 0 && (velocidad > 0 || p.stock_minimo > 0)) {
     motivo = 'agotado';
-  } else if (diasDeStock !== null && diasDeStock < UMBRAL_DIAS) {
+  } else if (diasDeStock !== null && diasDeStock < periodoDias) {
     motivo = 'por_agotarse';
   } else if (p.stock_minimo > 0 && p.stock <= p.stock_minimo) {
     motivo = 'stock_minimo';
   }
   if (!motivo) return null;
 
-  // Cantidad objetivo: cubrir COBERTURA_DIAS de venta. Sin velocidad medible
-  // (producto que aún no rota), reponer hasta 2× el stock mínimo — heurística
-  // conservadora y explicable.
+  // Cantidad objetivo: cubrir el periodo de abastecimiento elegido. Sin
+  // velocidad medible (producto que aún no rota), reponer hasta 2× el stock
+  // mínimo — heurística conservadora y explicable.
   const objetivo =
-    velocidad > 0 ? velocidad * COBERTURA_DIAS : Math.max(p.stock_minimo * 2, 1);
+    velocidad > 0 ? velocidad * periodoDias : Math.max(p.stock_minimo * 2, 1);
   const faltante = objetivo - p.stock;
   if (faltante <= 0) return null;
 
@@ -142,10 +153,11 @@ export function evaluarProducto(p: DatosAbastecimiento): SugerenciaCompra | null
  * agotados primero, luego por días de stock restantes (ascendente).
  */
 export function generarListaCompras(
-  productos: DatosAbastecimiento[]
+  productos: DatosAbastecimiento[],
+  periodoDias: number = DIAS_PERIODO.semanal
 ): { sugerencias: SugerenciaCompra[]; costoTotal: number } {
   const sugerencias = productos
-    .map(evaluarProducto)
+    .map((p) => evaluarProducto(p, periodoDias))
     .filter((s): s is SugerenciaCompra => s !== null)
     .sort((a, b) => {
       const rango = (m: MotivoCompra) => (m === 'agotado' ? 0 : m === 'por_agotarse' ? 1 : 2);

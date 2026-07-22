@@ -8,6 +8,7 @@ export const CLAVES = {
   API_TOKEN: 'api_token',
   NEGOCIO_REMOTO_ID: 'negocio_remoto_id',
   ULTIMA_SYNC: 'ultima_sync',
+  COMPRAS_PERIODO: 'compras_periodo', // 'semanal' | 'mensual'
 } as const;
 
 export type ClaveConfig = (typeof CLAVES)[keyof typeof CLAVES];

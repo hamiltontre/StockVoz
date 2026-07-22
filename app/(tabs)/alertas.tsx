@@ -1,8 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View,
   Text,
   SectionList,
+  ScrollView,
+  Modal,
   StyleSheet,
   RefreshControl,
   TouchableOpacity,
@@ -14,51 +16,57 @@ import { useRouter } from 'expo-router';
 import { useAlertas, type AlertaPorVencer } from '../../src/hooks/useAlertas';
 import { VentaRepository } from '../../src/database/repositories/VentaRepository';
 import { centavosACordobas } from '../../src/utils/money';
-import { formatearCantidadConUnidad } from '../../src/utils/cantidad';
-import type { SugerenciaCompra } from '../../src/utils/abastecimiento';
+import { formatearCantidad, formatearCantidadConUnidad } from '../../src/utils/cantidad';
+import type { PeriodoCompras } from '../../src/utils/abastecimiento';
 import { COLORES as C } from '../../src/theme/colors';
-import type { Producto, FiadorResumen } from '../../src/types';
+import type { Producto, FiadorResumen, VentaConDetalle } from '../../src/types';
 
 /** Un fiado con más días que esto se considera deuda vieja (se resalta). */
 const DIAS_FIADO_VIEJO = 7;
 
-type TipoAlerta = 'fiado' | 'compra' | 'vencido' | 'por_vencer' | 'stock_bajo';
+type TipoAlerta = 'fiado' | 'compra_resumen' | 'vencido' | 'por_vencer' | 'stock_bajo';
 
 interface ItemAlerta {
   tipo: TipoAlerta;
   producto?: Producto;
   dias_para_vencer?: number;
-  compra?: SugerenciaCompra;
   fiado?: FiadorResumen;
 }
 
-/** Texto explicativo de POR QUÉ se sugiere la compra — corto y claro. */
-function detalleCompra(c: SugerenciaCompra): string {
-  const partes: string[] = [];
-  if (c.motivo === 'agotado') {
-    partes.push('Agotado');
-  } else if (c.motivo === 'por_agotarse' && c.diasDeStock !== null) {
-    partes.push(`Se agota en ${c.diasDeStock} día${c.diasDeStock === 1 ? '' : 's'}`);
-  } else {
-    partes.push('Bajo el mínimo');
-  }
-  if (c.velocidadDiaria > 0) {
-    partes.push(`vendés ${c.velocidadDiaria}/día`);
-  }
-  return partes.join(' · ');
+/** Fecha legible para el separador del estado de cuenta: "18 de julio". */
+function formatearFechaCuenta(iso: string): string {
+  return new Date(iso).toLocaleDateString('es-NI', {
+    day: '2-digit', month: 'long', year: 'numeric',
+  });
 }
 
 function formatearVencimiento(iso: string): string {
-  const [yyyy, mm] = iso.split('-');
-  return `${mm}/${yyyy}`;
+  const [yyyy, mm, dd] = iso.split('-');
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 export default function PantallaAlertas() {
   const router = useRouter();
   const {
     porVencer, vencidos, stockBajo, compras, costoCompras,
+    periodoCompras, cambiarPeriodoCompras,
     fiados, totalDeudaFiados, totalAlertas, recargar,
   } = useAlertas();
+
+  const [comprasVisible, setComprasVisible] = useState(false);
+  // Estado de cuenta abierto: el fiador + todas sus ventas con productos
+  const [cuentaFiador, setCuentaFiador] = useState<{
+    resumen: FiadorResumen;
+    ventas: VentaConDetalle[];
+  } | null>(null);
+
+  // Abre el "cuaderno" de esa persona: todos los productos de todas sus
+  // cuentas pendientes, de la fecha más vieja a la más nueva.
+  const abrirCuentaFiador = useCallback(async (f: FiadorResumen) => {
+    const r = await VentaRepository.detalleFiador(f.fiador_nombre);
+    if (r.ok) setCuentaFiador({ resumen: f, ventas: r.data });
+    else Alert.alert('Error', r.error);
+  }, []);
 
   // "Ya pagó": salda TODAS las ventas fiadas pendientes de la persona.
   const cobrarFiado = useCallback((f: FiadorResumen) => {
@@ -72,6 +80,7 @@ export default function PantallaAlertas() {
           onPress: async () => {
             const r = await VentaRepository.marcarFiadorPagado(f.fiador_nombre);
             if (!r.ok) Alert.alert('Error', r.error);
+            else setCuentaFiador(null);
           },
         },
       ]
@@ -85,11 +94,9 @@ export default function PantallaAlertas() {
       data: fiados.map((f): ItemAlerta => ({ tipo: 'fiado', fiado: f })),
     },
     compras.length > 0 && {
-      titulo: costoCompras > 0
-        ? `LISTA DE COMPRAS · ${centavosACordobas(costoCompras)}`
-        : 'LISTA DE COMPRAS SUGERIDA',
+      titulo: 'COMPRAS',
       color: C.acento,
-      data: compras.map((c): ItemAlerta => ({ tipo: 'compra', compra: c })),
+      data: [{ tipo: 'compra_resumen' } as ItemAlerta],
     },
     vencidos.length > 0 && {
       titulo: 'VENCIDOS',
@@ -113,15 +120,15 @@ export default function PantallaAlertas() {
   ].filter(Boolean) as Array<{ titulo: string; color: string; data: ItemAlerta[] }>;
 
   const renderItem = useCallback(({ item }: { item: ItemAlerta }) => {
-    const { producto, tipo, dias_para_vencer, compra, fiado } = item;
+    const { producto, tipo, dias_para_vencer, fiado } = item;
 
-    // Tarjeta de fiado: quién debe, cuánto y hace cuánto. Tocar = cobrar.
+    // Tarjeta de fiado: quién debe y cuánto. Tocar = ver su cuenta completa.
     if (tipo === 'fiado' && fiado) {
       const esViejo = fiado.dias_deuda_mas_vieja >= DIAS_FIADO_VIEJO;
       return (
         <TouchableOpacity
           style={[s.card, s.cardFiado, esViejo && s.cardFiadoViejo]}
-          onPress={() => cobrarFiado(fiado)}
+          onPress={() => abrirCuentaFiador(fiado)}
           activeOpacity={0.8}
         >
           <View style={[s.cardIcono, { backgroundColor: C.amarilloClaro }]}>
@@ -134,7 +141,7 @@ export default function PantallaAlertas() {
               {fiado.dias_deuda_mas_vieja > 0
                 ? ` · debe desde hace ${fiado.dias_deuda_mas_vieja} día${fiado.dias_deuda_mas_vieja !== 1 ? 's' : ''}`
                 : ' · de hoy'}
-              {' · toca para cobrar'}
+              {' · toca para ver la cuenta'}
             </Text>
           </View>
           <Text style={[s.fiadoDeuda, esViejo && { color: C.rojo }]}>
@@ -144,29 +151,27 @@ export default function PantallaAlertas() {
       );
     }
 
-    // Tarjeta de compra sugerida: qué comprar, cuánto, y por qué.
-    if (tipo === 'compra' && compra) {
+    // Un solo cuadro para toda la lista de compras — el detalle vive en
+    // su propio modal, sin saturar la pantalla de alertas.
+    if (tipo === 'compra_resumen') {
       return (
         <TouchableOpacity
           style={[s.card, s.cardCompra]}
-          onPress={() => router.push('/(tabs)/inventario')}
+          onPress={() => setComprasVisible(true)}
           activeOpacity={0.8}
         >
           <View style={[s.cardIcono, { backgroundColor: C.acentoSuave }]}>
             <Ionicons name="cart-outline" size={20} color={C.acento} />
           </View>
           <View style={s.cardInfo}>
-            <Text style={s.cardNombre} numberOfLines={1}>{compra.nombre}</Text>
-            <Text style={s.cardDetalle}>{detalleCompra(compra)}</Text>
-          </View>
-          <View style={s.compraDerecha}>
-            <Text style={s.compraCantidad}>
-              {formatearCantidadConUnidad(compra.cantidadSugerida, compra.unidad)}
+            <Text style={s.cardNombre}>Lista por comprar</Text>
+            <Text style={s.cardDetalle}>
+              {compras.length} producto{compras.length !== 1 ? 's' : ''} · toca para ver la lista
             </Text>
-            {compra.costoEstimado > 0 && (
-              <Text style={s.compraCosto}>{centavosACordobas(compra.costoEstimado)}</Text>
-            )}
           </View>
+          {costoCompras > 0 && (
+            <Text style={s.compraCantidad}>{centavosACordobas(costoCompras)}</Text>
+          )}
         </TouchableOpacity>
       );
     }
@@ -200,16 +205,18 @@ export default function PantallaAlertas() {
           <Text style={s.cardNombre} numberOfLines={1}>{producto.nombre}</Text>
           <Text style={s.cardDetalle}>
             {tipo === 'vencido' && producto.fecha_vencimiento
-              ? `Venció ${formatearVencimiento(producto.fecha_vencimiento)}`
+              ? `Venció el ${formatearVencimiento(producto.fecha_vencimiento)}`
               : tipo === 'por_vencer' && producto.fecha_vencimiento
-              ? `Vence ${formatearVencimiento(producto.fecha_vencimiento)} · ${dias_para_vencer} día${dias_para_vencer !== 1 ? 's' : ''}`
+              ? (dias_para_vencer === 0
+                  ? `¡Vence HOY! (${formatearVencimiento(producto.fecha_vencimiento)})`
+                  : `Vence el ${formatearVencimiento(producto.fecha_vencimiento)} · ${dias_para_vencer} día${dias_para_vencer !== 1 ? 's' : ''}`)
               : `Quedan ${producto.stock} · mínimo ${producto.stock_minimo}`}
           </Text>
         </View>
         <Text style={s.cardPrecio}>{centavosACordobas(producto.precio)}</Text>
       </TouchableOpacity>
     );
-  }, [router, cobrarFiado]);
+  }, [router, abrirCuentaFiador, compras.length, costoCompras]);
 
   return (
     <SafeAreaView style={s.pantalla}>
@@ -225,7 +232,7 @@ export default function PantallaAlertas() {
       <SectionList
         sections={secciones}
         keyExtractor={(item) =>
-          `${item.tipo}-${item.producto?.id ?? item.compra?.id ?? item.fiado?.fiador_nombre}`
+          `${item.tipo}-${item.producto?.id ?? item.fiado?.fiador_nombre ?? 'resumen'}`
         }
         contentContainerStyle={s.lista}
         stickySectionHeadersEnabled={false}
@@ -248,6 +255,137 @@ export default function PantallaAlertas() {
           </View>
         }
       />
+
+      {/* ── Modal: lista de compras completa ── */}
+      <Modal
+        visible={comprasVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setComprasVisible(false)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalContenido}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitulo}>Lista por comprar</Text>
+              <TouchableOpacity onPress={() => setComprasVisible(false)}>
+                <Ionicons name="close" size={24} color={C.subtexto} />
+              </TouchableOpacity>
+            </View>
+
+            {/* ¿Cada cuánto te abasteces? Define cuánto sugiere comprar. */}
+            <View style={s.periodoRow}>
+              {(['semanal', 'mensual'] as PeriodoCompras[]).map((p) => (
+                <TouchableOpacity
+                  key={p}
+                  style={[s.periodoChip, periodoCompras === p && s.periodoChipActivo]}
+                  onPress={() => cambiarPeriodoCompras(p)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[s.periodoChipTexto, periodoCompras === p && s.periodoChipTextoActivo]}>
+                    {p === 'semanal' ? 'Semanal' : 'Mensual'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {compras.map((c) => (
+                <View key={c.id} style={s.compraFila}>
+                  <Text style={s.compraFilaNombre} numberOfLines={1}>{c.nombre}</Text>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={s.compraFilaCantidad}>
+                      {formatearCantidadConUnidad(c.cantidadSugerida, c.unidad)}
+                    </Text>
+                    {c.costoEstimado > 0 && (
+                      <Text style={s.compraFilaCosto}>{centavosACordobas(c.costoEstimado)}</Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+              {compras.length === 0 && (
+                <Text style={s.modalVacio}>Nada pendiente de comprar para este periodo.</Text>
+              )}
+            </ScrollView>
+
+            {costoCompras > 0 && (
+              <View style={s.modalFooterTotal}>
+                <Text style={s.modalFooterLabel}>Costo estimado</Text>
+                <Text style={s.modalFooterMonto}>{centavosACordobas(costoCompras)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Modal: estado de cuenta del fiador (el "cuaderno" de esa persona) ── */}
+      <Modal
+        visible={cuentaFiador !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setCuentaFiador(null)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalContenido}>
+            <View style={s.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.modalTitulo}>Cuenta de {cuentaFiador?.resumen.fiador_nombre}</Text>
+                <Text style={s.modalSub}>
+                  {cuentaFiador?.ventas.length} venta{cuentaFiador?.ventas.length !== 1 ? 's' : ''} pendiente{cuentaFiador?.ventas.length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setCuentaFiador(null)}>
+                <Ionicons name="close" size={24} color={C.subtexto} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {(() => {
+                // De la fecha más vieja a la más nueva, con la fecha como
+                // separador — para repasar la cuenta con el cliente enfrente.
+                let fechaPrevia = '';
+                return cuentaFiador?.ventas.map((v) => {
+                  const fecha = formatearFechaCuenta(v.creado_en);
+                  const nuevaFecha = fecha !== fechaPrevia;
+                  fechaPrevia = fecha;
+                  return (
+                    <View key={v.id}>
+                      {nuevaFecha && (
+                        <View style={s.fechaSeparador}>
+                          <Text style={s.fechaSeparadorTexto}>{fecha}</Text>
+                          <View style={s.fechaSeparadorLinea} />
+                        </View>
+                      )}
+                      {v.items.map((it) => (
+                        <View key={it.id} style={s.cuentaFila}>
+                          <Text style={s.cuentaFilaNombre} numberOfLines={1}>
+                            {formatearCantidad(it.cantidad)}× {it.nombre_producto}
+                          </Text>
+                          <Text style={s.cuentaFilaMonto}>{centavosACordobas(it.subtotal)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                });
+              })()}
+            </ScrollView>
+
+            <View style={s.modalFooterTotal}>
+              <Text style={s.modalFooterLabel}>Total que debe</Text>
+              <Text style={[s.modalFooterMonto, { color: C.amarillo }]}>
+                {cuentaFiador ? centavosACordobas(cuentaFiador.resumen.total_deuda) : ''}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={s.btnYaPago}
+              onPress={() => cuentaFiador && cobrarFiado(cuentaFiador.resumen)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
+              <Text style={s.btnYaPagoTexto}>Ya pagó todo</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -305,12 +443,65 @@ const s = StyleSheet.create({
   cardDetalle: { fontSize: 12, color: C.subtexto, marginTop: 2 },
   cardPrecio: { fontSize: 14, fontWeight: '700', color: C.acento },
   cardCompra: { borderColor: C.acento, borderWidth: 1.5 },
-  compraDerecha: { alignItems: 'flex-end', gap: 2 },
   compraCantidad: { fontSize: 15, fontWeight: '800', color: C.acento },
-  compraCosto: { fontSize: 12, color: C.subtexto },
   cardFiado: { borderColor: C.amarillo, borderWidth: 1.5 },
   cardFiadoViejo: { borderColor: C.rojo },
   fiadoDeuda: { fontSize: 15, fontWeight: '800', color: C.amarillo },
+  // ── Modales (compras y cuenta de fiador) ──
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalContenido: {
+    backgroundColor: C.fondo, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20, paddingBottom: 30, maxHeight: '85%',
+    borderTopWidth: 1, borderColor: C.borde,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  modalTitulo: { fontSize: 18, fontWeight: '700', color: C.texto },
+  modalSub: { fontSize: 12, color: C.subtexto, marginTop: 2 },
+  modalVacio: { color: C.subtexto, textAlign: 'center', paddingVertical: 30 },
+  periodoRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  periodoChip: {
+    flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+    borderWidth: 1, borderColor: C.borde, backgroundColor: C.tarjeta,
+  },
+  periodoChipActivo: { backgroundColor: C.acento, borderColor: C.acento },
+  periodoChipTexto: { fontSize: 13, fontWeight: '700', color: C.subtexto },
+  periodoChipTextoActivo: { color: '#FFFFFF' },
+  compraFila: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: C.borde, gap: 10,
+  },
+  compraFilaNombre: { flex: 1, fontSize: 15, fontWeight: '600', color: C.texto },
+  compraFilaCantidad: { fontSize: 15, fontWeight: '800', color: C.acento },
+  compraFilaCosto: { fontSize: 11, color: C.subtexto, marginTop: 1 },
+  modalFooterTotal: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: 14, marginTop: 4, borderTopWidth: 1, borderTopColor: C.borde,
+  },
+  modalFooterLabel: { fontSize: 14, color: C.subtexto, fontWeight: '600' },
+  modalFooterMonto: { fontSize: 20, fontWeight: '800', color: C.texto },
+  fechaSeparador: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginTop: 14, marginBottom: 6,
+  },
+  fechaSeparadorTexto: {
+    fontSize: 12, fontWeight: '700', color: C.subtexto,
+    textTransform: 'capitalize',
+  },
+  fechaSeparadorLinea: { flex: 1, height: 1, backgroundColor: C.borde },
+  cuentaFila: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 7, gap: 10,
+  },
+  cuentaFilaNombre: { flex: 1, fontSize: 14, fontWeight: '500', color: C.texto },
+  cuentaFilaMonto: { fontSize: 14, fontWeight: '700', color: C.texto },
+  btnYaPago: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: C.verde, borderRadius: 14, paddingVertical: 15, marginTop: 12,
+  },
+  btnYaPagoTexto: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   vacio: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 80 },
   vacioTitulo: { fontSize: 17, fontWeight: '700', color: C.texto },
   vacioSub: { fontSize: 13, color: C.subtexto, textAlign: 'center', paddingHorizontal: 50 },
