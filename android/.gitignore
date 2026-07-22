@@ -17,3 +17,7 @@ app/src/main/java/inline/
 
 # Bundle artifacts
 *.jsbundle
+
+
+# Llave de firma de release — NUNCA al repo (respaldada aparte por el dueño)
+app/stockvoz-release.keystore

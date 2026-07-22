@@ -104,15 +104,25 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Credenciales en ~/.gradle/gradle.properties (NUNCA en el repo).
+            // El keystore está gitignorado; el dueño lo respalda aparte.
+            if (project.hasProperty('STOCKVOZ_UPLOAD_STORE_FILE')) {
+                storeFile file(STOCKVOZ_UPLOAD_STORE_FILE)
+                storePassword STOCKVOZ_UPLOAD_STORE_PASSWORD
+                keyAlias STOCKVOZ_UPLOAD_KEY_ALIAS
+                keyPassword STOCKVOZ_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig project.hasProperty('STOCKVOZ_UPLOAD_STORE_FILE')
+                ? signingConfigs.release
+                : signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
