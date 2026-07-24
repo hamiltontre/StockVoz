@@ -17,6 +17,13 @@ import { UNIDADES_FRACCIONABLES } from './cantidad';
 export const VENTANA_DIAS = 14;
 /** Con menos días de historial que esto, la sugerencia se marca "aprendiendo". */
 export const DIAS_CONFIANZA = 7;
+/**
+ * Mínimo de días por los que se divide para estimar la velocidad.
+ * Sin esto, un solo día movido (una fiesta, una promoción, o las pruebas
+ * del dueño) se interpreta como el ritmo diario normal y dispara pedidos
+ * absurdos: 20 vendidos en un día ⇒ "vende 20/día" ⇒ 140 por semana.
+ */
+export const DIAS_MINIMOS_OBSERVACION = 3;
 
 /**
  * Cada cuánto se abastece el negocio. La mayoría de pulperías compran
@@ -87,12 +94,17 @@ export function evaluarProducto(
   p: DatosAbastecimiento,
   periodoDias: number = DIAS_PERIODO.semanal
 ): SugerenciaCompra | null {
-  // Días realmente observados: si el producto empezó a venderse hace 4 días,
-  // dividir entre 4 (no entre 14) para no subestimar su velocidad real.
+  // Días observados: si el producto empezó a venderse hace 4 días, dividir
+  // entre 4 (no entre 14) para no subestimar su ritmo. Pero nunca entre
+  // menos de DIAS_MINIMOS_OBSERVACION — con uno o dos días no hay forma de
+  // saber si ese ritmo es el normal o fue un día excepcional.
   const diasObservados =
     p.dias_desde_primera_venta === null
       ? null
-      : Math.max(1, Math.min(VENTANA_DIAS, p.dias_desde_primera_venta));
+      : Math.max(
+          DIAS_MINIMOS_OBSERVACION,
+          Math.min(VENTANA_DIAS, p.dias_desde_primera_venta)
+        );
 
   const velocidad =
     diasObservados !== null && p.vendido_ventana > 0
@@ -111,11 +123,24 @@ export function evaluarProducto(
   }
   if (!motivo) return null;
 
-  // Cantidad objetivo: cubrir el periodo de abastecimiento elegido. Sin
-  // velocidad medible (producto que aún no rota), reponer hasta 2× el stock
-  // mínimo — heurística conservadora y explicable.
+  // Horizonte: cuántos días de venta se busca cubrir. Con poco historial
+  // NO se proyecta el periodo completo — solo hasta donde alcanza lo
+  // observado. Así un producto nuevo pide poco y va creciendo conforme la
+  // app aprende su ritmo real, en vez de pedir un mes entero por un día
+  // bueno. Con historial suficiente sí se cubre el periodo elegido.
+  const confiable =
+    p.dias_desde_primera_venta !== null &&
+    p.dias_desde_primera_venta >= DIAS_CONFIANZA;
+  const horizonte =
+    confiable || diasObservados === null
+      ? periodoDias
+      : Math.min(periodoDias, diasObservados);
+
+  // Cantidad objetivo: cubrir el horizonte. Sin velocidad medible (producto
+  // que aún no rota), reponer hasta 2× el stock mínimo — heurística
+  // conservadora y explicable.
   const objetivo =
-    velocidad > 0 ? velocidad * periodoDias : Math.max(p.stock_minimo * 2, 1);
+    velocidad > 0 ? velocidad * horizonte : Math.max(p.stock_minimo * 2, 1);
   const faltante = objetivo - p.stock;
   if (faltante <= 0) return null;
 
