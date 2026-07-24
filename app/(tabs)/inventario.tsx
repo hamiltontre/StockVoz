@@ -421,9 +421,13 @@ export default function PantallaInventario() {
               </View>
               <View style={{ width: 12 }} />
               <View style={{ flex: 1 }}>
-                <Campo label="Stock mínimo">
+                {/* Umbral de la alerta de stock bajo — NO es un requisito de
+                    cantidad. "Avisame cuando queden 5" = alerta al llegar a 5. */}
+                <Campo label="Avisarme cuando queden">
                   <TextInput
                     style={s.input}
+                    placeholder="Ej: 5"
+                    placeholderTextColor={C.subtexto}
                     keyboardType="decimal-pad"
                     value={String(form.stock_minimo)}
                     onChangeText={(v) => setForm((f) => ({ ...f, stock_minimo: parseFloat(v.replace(',', '.')) || 0 }))}
