@@ -75,6 +75,12 @@ export function SesionProvider({ children }: { children: React.ReactNode }) {
     if (cargando || hayAdmin === null) return;
 
     const enAuth = segments[0] === '(auth)';
+    // Al arrancar con sesión restaurada caemos en "/" (el spinner de
+    // app/index.tsx), que no es (auth) ni (tabs). Si solo se comprobara
+    // "viene de (auth)", esa sesión quedaría atrapada en el spinner para
+    // siempre. OJO: no basta con "no está en (tabs)" — ajustes, usuarios y
+    // palabras-clave viven fuera de (tabs) y sacaríamos al usuario de ellas.
+    const enRaiz = segments.length === 0;
 
     if (!sesion) {
       // Sin sesión activa → ir a setup (primera vez) o a login
@@ -83,11 +89,9 @@ export function SesionProvider({ children }: { children: React.ReactNode }) {
       } else if (!enAuth) {
         router.replace('/(auth)/login');
       }
-    } else {
-      // Con sesión activa → si está en auth, llevar a la app
-      if (enAuth) {
-        router.replace('/(tabs)/ventas');
-      }
+    } else if (enAuth || enRaiz) {
+      // Con sesión activa (recién iniciada o restaurada) → entrar a la app
+      router.replace('/(tabs)/ventas');
     }
   }, [sesion, segments, cargando, hayAdmin]);
 
