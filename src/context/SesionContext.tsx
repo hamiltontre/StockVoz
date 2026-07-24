@@ -80,7 +80,7 @@ export function SesionProvider({ children }: { children: React.ReactNode }) {
     // "viene de (auth)", esa sesión quedaría atrapada en el spinner para
     // siempre. OJO: no basta con "no está en (tabs)" — ajustes, usuarios y
     // palabras-clave viven fuera de (tabs) y sacaríamos al usuario de ellas.
-    const enRaiz = segments.length === 0;
+    const enRaiz = !segments[0];
 
     if (!sesion) {
       // Sin sesión activa → ir a setup (primera vez) o a login
