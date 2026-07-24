@@ -9,6 +9,8 @@ export const CLAVES = {
   NEGOCIO_REMOTO_ID: 'negocio_remoto_id',
   ULTIMA_SYNC: 'ultima_sync',
   COMPRAS_PERIODO: 'compras_periodo', // 'semanal' | 'mensual'
+  SESION_USUARIO_ID: 'sesion_usuario_id',
+  SESION_EXPIRA_EN: 'sesion_expira_en', // epoch ms
 } as const;
 
 export type ClaveConfig = (typeof CLAVES)[keyof typeof CLAVES];

@@ -130,6 +130,8 @@ export interface Usuario {
   rol: RolUsuario;
   pin_hash: string;
   salt: string;
+  telefono: string | null;        // para recuperar el PIN si se olvida
+  pin_reseteado_en: string | null; // último reset por recuperación
   activo: boolean;
   creado_en: string;
   ultimo_acceso: string | null;
@@ -139,6 +141,7 @@ export type CrearUsuarioDTO = {
   nombre: string;
   rol: RolUsuario;
   pin: string; // 4 dígitos — se hashea antes de guardar
+  telefono?: string;
 };
 
 // Sesión activa en memoria (nunca persiste credenciales)

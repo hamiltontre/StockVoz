@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { hashPin, verificarPin, generarSalt } from '../../utils/hash';
+import { normalizarTelefono, mismoTelefono } from '../../utils/telefono';
 import type { Usuario, CrearUsuarioDTO, RolUsuario, Result } from '../../types';
 
 const NEGOCIO_ID = 1;
@@ -12,6 +13,8 @@ function rowToUsuario(row: Record<string, unknown>): Usuario {
     rol: row.rol as RolUsuario,
     pin_hash: row.pin_hash as string,
     salt: (row.salt as string) ?? '',
+    telefono: (row.telefono as string) ?? null,
+    pin_reseteado_en: (row.pin_reseteado_en as string) ?? null,
     activo: (row.activo as number) === 1,
     creado_en: row.creado_en as string,
     ultimo_acceso: (row.ultimo_acceso as string) ?? null,
@@ -22,6 +25,7 @@ function validarPin(pin: string): string | null {
   if (!/^\d{4}$/.test(pin)) return 'El PIN debe ser exactamente 4 dígitos numéricos';
   return null;
 }
+
 
 export const UsuarioRepository = {
   async obtenerTodos(): Promise<Result<Usuario[]>> {
@@ -71,8 +75,9 @@ export const UsuarioRepository = {
 
       const salt = await generarSalt();
       const result = await db.runAsync(
-        'INSERT INTO usuarios (negocio_id, nombre, rol, pin_hash, salt) VALUES (?, ?, ?, ?, ?)',
-        [NEGOCIO_ID, dto.nombre.trim(), dto.rol, hashPin(dto.pin, salt), salt]
+        'INSERT INTO usuarios (negocio_id, nombre, rol, pin_hash, salt, telefono) VALUES (?, ?, ?, ?, ?, ?)',
+        [NEGOCIO_ID, dto.nombre.trim(), dto.rol, hashPin(dto.pin, salt), salt,
+         normalizarTelefono(dto.telefono) || null]
       );
       const created = await db.getFirstAsync<Record<string, unknown>>(
         'SELECT * FROM usuarios WHERE id = ?',
@@ -122,6 +127,66 @@ export const UsuarioRepository = {
         'UPDATE usuarios SET pin_hash = ?, salt = ? WHERE id = ?',
         [hashPin(pinNuevo, nuevoSalt), nuevoSalt, id]
       );
+      return { ok: true, data: undefined };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  /**
+   * Recuperación de PIN olvidado, sin internet ni soporte remoto.
+   * El dueño demuestra que es él con el teléfono que registró al instalar.
+   *
+   * LÍMITE CONOCIDO: quien sepa ese número Y tenga el teléfono en la mano
+   * puede restablecer el PIN. Es un compromiso deliberado — quedar
+   * encerrado para siempre fuera del propio negocio es un daño peor. Por
+   * eso el reset queda registrado en pin_reseteado_en y se le avisa al
+   * usuario la próxima vez que entre.
+   */
+  async recuperarPinPorTelefono(
+    usuarioId: number,
+    telefono: string,
+    pinNuevo: string
+  ): Promise<Result<void>> {
+    try {
+      const pinError = validarPin(pinNuevo);
+      if (pinError) return { ok: false, error: pinError };
+
+      const db = await getDb();
+      const row = await db.getFirstAsync<{ telefono: string | null }>(
+        'SELECT telefono FROM usuarios WHERE id = ? AND activo = 1',
+        [usuarioId]
+      );
+      if (!row) return { ok: false, error: 'Usuario no encontrado' };
+      if (!row.telefono) {
+        return {
+          ok: false,
+          error: 'Este usuario no tiene teléfono registrado. Pide al administrador que te cambie el PIN.',
+        };
+      }
+      if (!mismoTelefono(row.telefono, telefono)) {
+        return { ok: false, error: 'El teléfono no coincide con el registrado' };
+      }
+
+      const nuevoSalt = await generarSalt();
+      await db.runAsync(
+        `UPDATE usuarios
+         SET pin_hash = ?, salt = ?,
+             pin_reseteado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ?`,
+        [hashPin(pinNuevo, nuevoSalt), nuevoSalt, usuarioId]
+      );
+      return { ok: true, data: undefined };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  },
+
+  /** Limpia el aviso de "tu PIN fue restablecido" una vez que el dueño lo vio. */
+  async confirmarAvisoReset(id: number): Promise<Result<void>> {
+    try {
+      const db = await getDb();
+      await db.runAsync('UPDATE usuarios SET pin_reseteado_en = NULL WHERE id = ?', [id]);
       return { ok: true, data: undefined };
     } catch (e) {
       return { ok: false, error: String(e) };

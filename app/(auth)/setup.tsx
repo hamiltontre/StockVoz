@@ -21,6 +21,7 @@ export default function PantallaSetup() {
   const [paso, setPaso] = useState<1 | 2>(1);
   const [nombreNegocio, setNombreNegocio] = useState('');
   const [nombreAdmin, setNombreAdmin] = useState('');
+  const [telefono, setTelefono] = useState('');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -32,6 +33,15 @@ export default function PantallaSetup() {
     }
     if (!nombreAdmin.trim()) {
       Alert.alert('Campo requerido', 'Ingresa tu nombre');
+      return;
+    }
+    // El teléfono es la ÚNICA forma de recuperar el PIN sin internet:
+    // sin él, olvidarlo dejaría al dueño encerrado fuera de su negocio.
+    if (telefono.replace(/\D/g, '').length < 8) {
+      Alert.alert(
+        'Teléfono requerido',
+        'Ingresa tu número completo. Es lo único que te permitirá recuperar tu PIN si lo olvidas.'
+      );
       return;
     }
     setPaso(2);
@@ -61,6 +71,7 @@ export default function PantallaSetup() {
         nombre: nombreAdmin.trim(),
         rol: 'admin',
         pin,
+        telefono: telefono.trim(),
       });
 
       if (!result.ok) {
@@ -129,6 +140,20 @@ export default function PantallaSetup() {
                   autoCapitalize="words"
                 />
               </Campo>
+
+              <Campo label="Tu número de teléfono">
+                <TextInput
+                  style={s.input}
+                  placeholder="Ej: 8888-7777"
+                  placeholderTextColor={C.subtexto}
+                  value={telefono}
+                  onChangeText={setTelefono}
+                  keyboardType="phone-pad"
+                />
+              </Campo>
+              <Text style={s.ayudaTexto}>
+                Con este número podrás recuperar tu PIN si lo olvidas.
+              </Text>
 
               <TouchableOpacity style={s.btnPrimario} onPress={continuarPaso1} activeOpacity={0.85}>
                 <Text style={s.btnPrimarioTexto}>Continuar</Text>
@@ -233,6 +258,7 @@ const s = StyleSheet.create({
   form: { gap: 4 },
   stepTitulo: { fontSize: 20, fontWeight: '700', color: C.texto, marginBottom: 6 },
   stepSub: { fontSize: 13, color: C.subtexto, marginBottom: 20, lineHeight: 18 },
+  ayudaTexto: { fontSize: 12, color: C.subtexto, marginTop: -8, marginBottom: 16, lineHeight: 16 },
   input: {
     backgroundColor: C.tarjeta, borderWidth: 1, borderColor: C.borde,
     borderRadius: 12, padding: 14, color: C.texto, fontSize: 15,

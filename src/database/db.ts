@@ -216,6 +216,19 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
       `CREATE INDEX IF NOT EXISTS idx_ventas_fiado ON ventas(es_fiado, fiado_pagado_en)`,
     ],
   },
+  {
+    // Migración v8 — recuperación de PIN.
+    // Sin esto, olvidar el PIN deja al dueño encerrado fuera de su propio
+    // negocio para siempre (la app es 100% local, no hay soporte remoto que
+    // pueda entrar). El teléfono es el dato que el dueño SIEMPRE recuerda.
+    // pin_reseteado_en registra el último reset por recuperación para poder
+    // avisarle al admin (un empleado que sepa su número podría intentarlo).
+    version: 8,
+    sentencias: [
+      `ALTER TABLE usuarios ADD COLUMN telefono TEXT`,
+      `ALTER TABLE usuarios ADD COLUMN pin_reseteado_en TEXT`,
+    ],
+  },
 ];
 
 /**

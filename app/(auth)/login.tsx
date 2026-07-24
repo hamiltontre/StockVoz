@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  Alert, ActivityIndicator, FlatList,
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  Alert, ActivityIndicator, FlatList, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,11 @@ export default function PantallaLogin() {
   const [bloqueadoHasta, setBloqueadoHasta] = useState<number | null>(null);
   const [verificando, setVerificando] = useState(false);
   const [cargando, setCargando] = useState(true);
+  // Recuperación de PIN olvidado (verificación por teléfono registrado)
+  const [recuperarVisible, setRecuperarVisible] = useState(false);
+  const [telRecuperar, setTelRecuperar] = useState('');
+  const [pinNuevo, setPinNuevo] = useState('');
+  const [recuperando, setRecuperando] = useState(false);
 
   useEffect(() => {
     UsuarioRepository.obtenerTodos().then((r) => {
@@ -69,6 +74,16 @@ export default function PantallaLogin() {
 
       if (result.ok) {
         setIntentosFallidos(0);
+        // Si alguien restableció el PIN por recuperación, avisarle al dueño:
+        // es la única forma de que se entere de un acceso no autorizado.
+        if (result.data.pin_reseteado_en) {
+          const cuando = new Date(result.data.pin_reseteado_en).toLocaleString('es-NI');
+          Alert.alert(
+            'Aviso de seguridad',
+            `Tu PIN fue restablecido con tu número de teléfono el ${cuando}.\n\nSi no fuiste vos, cambiá tu PIN ahora desde Ajustes.`
+          );
+          UsuarioRepository.confirmarAvisoReset(result.data.id);
+        }
         iniciarSesion(result.data);
       } else {
         const nuevosIntentos = intentosFallidos + 1;
@@ -86,6 +101,31 @@ export default function PantallaLogin() {
           Alert.alert('PIN incorrecto', `Intentos restantes: ${5 - nuevosIntentos}`);
         }
       }
+    }
+  };
+
+  const recuperarPin = async () => {
+    if (!seleccionado) return;
+    if (pinNuevo.length !== 4) {
+      Alert.alert('PIN inválido', 'El nuevo PIN debe tener 4 dígitos');
+      return;
+    }
+    setRecuperando(true);
+    const r = await UsuarioRepository.recuperarPinPorTelefono(
+      seleccionado.id,
+      telRecuperar,
+      pinNuevo
+    );
+    setRecuperando(false);
+    if (r.ok) {
+      setRecuperarVisible(false);
+      setTelRecuperar('');
+      setPinNuevo('');
+      setBloqueadoHasta(null);
+      setIntentosFallidos(0);
+      Alert.alert('PIN restablecido', 'Ya podés entrar con tu PIN nuevo.');
+    } else {
+      Alert.alert('No se pudo restablecer', r.error);
     }
   };
 
@@ -190,8 +230,77 @@ export default function PantallaLogin() {
               </TouchableOpacity>
             ))}
           </View>
+
+          <TouchableOpacity
+            style={s.btnOlvide}
+            onPress={() => setRecuperarVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={s.btnOlvideTexto}>¿Olvidaste tu PIN?</Text>
+          </TouchableOpacity>
         </View>
       )}
+
+      {/* Recuperación con el teléfono registrado — sin internet ni soporte */}
+      <Modal
+        visible={recuperarVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRecuperarVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={s.modalOverlay}
+        >
+          <View style={s.modalContenido}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitulo}>Recuperar PIN</Text>
+              <TouchableOpacity onPress={() => setRecuperarVisible(false)}>
+                <Ionicons name="close" size={24} color={C.subtexto} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={s.modalSub}>
+              Ingresá el número de teléfono que registraste al instalar StockVoz
+              y elegí un PIN nuevo.
+            </Text>
+
+            <Text style={s.campoLabel}>Tu número de teléfono</Text>
+            <TextInput
+              style={s.inputModal}
+              placeholder="Ej: 8888-7777"
+              placeholderTextColor={C.subtexto}
+              value={telRecuperar}
+              onChangeText={setTelRecuperar}
+              keyboardType="phone-pad"
+              autoFocus
+            />
+
+            <Text style={s.campoLabel}>PIN nuevo (4 dígitos)</Text>
+            <TextInput
+              style={[s.inputModal, { letterSpacing: 8, textAlign: 'center' }]}
+              placeholder="••••"
+              placeholderTextColor={C.subtexto}
+              value={pinNuevo}
+              onChangeText={(v) => setPinNuevo(v.replace(/\D/g, '').slice(0, 4))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={4}
+            />
+
+            <TouchableOpacity
+              style={[s.btnRecuperar, recuperando && { opacity: 0.6 }]}
+              onPress={recuperarPin}
+              disabled={recuperando}
+              activeOpacity={0.85}
+            >
+              {recuperando
+                ? <ActivityIndicator color="#FFFFFF" />
+                : <Text style={s.btnRecuperarTexto}>Restablecer PIN</Text>}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -249,4 +358,30 @@ const s = StyleSheet.create({
   },
   teclaDelete: { backgroundColor: 'transparent', borderColor: 'transparent' },
   teclaTexto: { fontSize: 24, fontWeight: '600', color: C.texto },
+  btnOlvide: { alignSelf: 'center', marginTop: 22, padding: 8 },
+  btnOlvideTexto: { fontSize: 14, color: C.acento, fontWeight: '600' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalContenido: {
+    backgroundColor: C.fondo, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 24, paddingBottom: 34, borderTopWidth: 1, borderColor: C.borde,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 8,
+  },
+  modalTitulo: { fontSize: 19, fontWeight: '700', color: C.texto },
+  modalSub: { fontSize: 13, color: C.subtexto, lineHeight: 19, marginBottom: 18 },
+  campoLabel: {
+    fontSize: 12, fontWeight: '600', color: C.subtexto,
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6,
+  },
+  inputModal: {
+    backgroundColor: C.tarjeta, borderWidth: 1, borderColor: C.borde,
+    borderRadius: 10, padding: 13, color: C.texto, fontSize: 16, marginBottom: 16,
+  },
+  btnRecuperar: {
+    backgroundColor: C.acento, borderRadius: 14,
+    paddingVertical: 15, alignItems: 'center', marginTop: 4,
+  },
+  btnRecuperarTexto: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });
