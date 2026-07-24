@@ -13,6 +13,7 @@ import { useSync } from '../../src/hooks/useSync';
 import { UsuarioRepository } from '../../src/database/repositories/UsuarioRepository';
 import { ApiCliente } from '../../src/services/apiCliente';
 import { ConfigRepository, CLAVES } from '../../src/database/repositories/ConfigRepository';
+import { useRespaldo } from '../../src/hooks/useRespaldo';
 import type { Negocio } from '../../src/types';
 
 import { COLORES as C } from '../../src/theme/colors';
@@ -27,6 +28,10 @@ export default function PantallaAjustes() {
   const { sesion, esAdmin, cerrarSesion } = useSesion();
   const { conectado } = useConectividad();
   const { estado: estadoSync, pendientes, sincronizar } = useSync();
+  const {
+    diasSinRespaldo, necesitaRespaldo,
+    generando: generandoRespaldo, respaldar,
+  } = useRespaldo();
   const [negocio, setNegocio] = useState<Negocio | null>(null);
   const [nombreEditable, setNombreEditable] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -330,6 +335,55 @@ export default function PantallaAjustes() {
           </Seccion>
         )}
 
+        {/* Respaldo — disponible en todos los planes, también sin internet */}
+        <Seccion titulo="RESPALDO DE MI NEGOCIO">
+          <View style={{ gap: 12 }}>
+            <View style={s.fila}>
+              <View style={s.filaIcono}>
+                <Ionicons
+                  name={necesitaRespaldo ? 'alert-circle-outline' : 'shield-checkmark-outline'}
+                  size={20}
+                  color={necesitaRespaldo ? C.amarillo : C.verde}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.filaLabel}>
+                  {diasSinRespaldo === null
+                    ? 'Nunca has respaldado'
+                    : diasSinRespaldo === 0
+                    ? 'Respaldado hoy'
+                    : `Hace ${diasSinRespaldo} día${diasSinRespaldo !== 1 ? 's' : ''}`}
+                </Text>
+                <Text style={s.filaSub}>
+                  Te lo envías por WhatsApp y queda guardado en tu chat
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[s.btnRespaldo, generandoRespaldo && { opacity: 0.6 }]}
+              onPress={respaldar}
+              disabled={generandoRespaldo}
+              activeOpacity={0.85}
+            >
+              {generandoRespaldo ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="share-outline" size={18} color="#FFFFFF" />
+                  <Text style={s.btnRespaldoTexto}>Enviar respaldo por WhatsApp</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <Text style={s.respaldoNota}>
+              Incluye tu inventario completo, quién te debe y el resumen de
+              ventas. Si perdés el teléfono, con ese mensaje recuperás la
+              información de tu negocio.
+            </Text>
+          </View>
+        </Seccion>
+
         {/* Seguridad */}
         <Seccion titulo="SEGURIDAD">
           <View style={{ gap: 12 }}>
@@ -455,6 +509,12 @@ const s = StyleSheet.create({
   filaIcono: { width: 28, alignItems: 'center' },
   filaLabel: { fontSize: 15, color: C.texto, fontWeight: '500' },
   filaSub: { fontSize: 12, color: C.subtexto, marginTop: 2 },
+  btnRespaldo: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: C.verde, borderRadius: 12, paddingVertical: 14,
+  },
+  btnRespaldoTexto: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  respaldoNota: { fontSize: 11, color: C.subtexto, lineHeight: 16 },
   inputNombre: {
     fontSize: 15, color: C.texto, fontWeight: '500',
     borderBottomWidth: 1, borderBottomColor: C.acento, paddingBottom: 2,

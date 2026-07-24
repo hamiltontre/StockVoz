@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useVentas } from '../../src/hooks/useVentas';
 import { useVoz } from '../../src/hooks/useVoz';
+import { useRespaldo } from '../../src/hooks/useRespaldo';
 import { useSesion } from '../../src/context/SesionContext';
 import { ProductoRepository } from '../../src/database/repositories/ProductoRepository';
 import { VentaRepository } from '../../src/database/repositories/VentaRepository';
@@ -42,6 +43,10 @@ export default function PantallaVentas() {
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
   const { sesion } = useSesion();
+  const {
+    diasSinRespaldo, necesitaRespaldo,
+    generando: generandoRespaldo, respaldar,
+  } = useRespaldo();
   const { estado: estadoVoz, resultado: resultadoVoz, errorMensaje: errorVoz, iniciarEscucha, detenerEscucha, limpiar, segundos: segundosVoz } = useVoz();
 
   useEffect(() => {
@@ -214,6 +219,33 @@ export default function PantallaVentas() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Aviso de respaldo: aparece cuando lleva días sin respaldar. Es la
+          única forma real de proteger al dueño — la app no puede enviar
+          nada sola (Android lo impide) y menos si perdió el teléfono. */}
+      {necesitaRespaldo && estadoVoz === 'inactivo' && (
+        <TouchableOpacity
+          style={s.bannerRespaldo}
+          onPress={respaldar}
+          disabled={generandoRespaldo}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="shield-outline" size={18} color={C.amarillo} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.bannerRespaldoTexto}>
+              {diasSinRespaldo === null
+                ? 'Respaldá tu negocio'
+                : `Hace ${diasSinRespaldo} días sin respaldo`}
+            </Text>
+            <Text style={s.bannerRespaldoSub}>
+              Toca para enviarte tu inventario y fiados por WhatsApp
+            </Text>
+          </View>
+          {generandoRespaldo
+            ? <ActivityIndicator size="small" color={C.amarillo} />
+            : <Ionicons name="chevron-forward" size={18} color={C.amarillo} />}
+        </TouchableOpacity>
+      )}
 
       {/* Indicador de voz */}
       {estadoVoz !== 'inactivo' && (
@@ -442,6 +474,15 @@ const s = StyleSheet.create({
     padding: 10,
     gap: 10,
   },
+  bannerRespaldo: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: C.amarilloClaro,
+    marginHorizontal: 20, marginBottom: 8,
+    borderRadius: 10, padding: 11,
+    borderWidth: 1, borderColor: C.amarillo,
+  },
+  bannerRespaldoTexto: { color: C.texto, fontSize: 14, fontWeight: '700' },
+  bannerRespaldoSub: { color: C.subtexto, fontSize: 11, marginTop: 1 },
   bannerVozTexto: { color: C.acentoTexto, fontSize: 14, fontWeight: '600' },
   bannerVozSub: { color: C.subtexto, fontSize: 11, marginTop: 2 },
   bannerBtnStop: { padding: 2 },
