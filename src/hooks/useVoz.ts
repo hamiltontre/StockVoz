@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
-import { parsearMultiplesProductos, seleccionarPorNombre } from '../utils/vozParser';
+import {
+  parsearMultiplesProductos,
+  seleccionarPorNombre,
+  seleccionarPorParecido,
+} from '../utils/vozParser';
 import type { Producto } from '../types';
 
 // Re-export para compatibilidad: el parser vive en utils/vozParser (módulo
@@ -111,8 +115,9 @@ export async function buscarProductosInteligente(palabras: string[]): Promise<Pr
   // Nivel 0: comparación por nombre en memoria (inventarios pequeños,
   // ≤500 productos) — maneja acentos y plurales mejor que LIKE en SQL.
   const todosR = await ProductoRepository.obtenerTodos();
-  if (todosR.ok) {
-    const porNombre = seleccionarPorNombre(palabras, todosR.data);
+  const todos = todosR.ok ? todosR.data : [];
+  if (todos.length > 0) {
+    const porNombre = seleccionarPorNombre(palabras, todos);
     if (porNombre.length > 0) return porNombre;
   }
 
@@ -141,11 +146,24 @@ export async function buscarProductosInteligente(palabras: string[]): Promise<Pr
     }
   }
 
-  return [];
+  // Nivel 5 (último recurso): tolerar errores de transcripción.
+  // Sin internet el reconocimiento es menos preciso ("maruchan" puede
+  // llegar como "marucha") y en un local ruidoso también. Aquí la
+  // alternativa es no encontrar nada, así que vale arriesgar — pero solo
+  // con un ganador claro, nunca ante un empate.
+  return seleccionarPorParecido(palabras, todos);
 }
 
 // Tope de seguridad: si el micrófono queda encendido, se corta solo.
-const MAX_ESCUCHA_MS = 60_000;
+// Generoso a propósito: el vendedor atiende, cobra, piensa y sigue
+// dictando; cortarlo antes es la queja número uno.
+const MAX_ESCUCHA_MS = 180_000;
+/** Espera antes de reabrir el micrófono — evita pisar la sesión que cierra. */
+const PAUSA_REARME_MS = 350;
+/** Tope de re-armes por sesión: acota un posible bucle de fallos. */
+const MAX_REARMES = 60;
+/** Espera tras onSpeechEnd por si aún llega el resultado del segmento. */
+const GRACIA_MS = 900;
 
 // Diagnóstico de la sesión de voz — solo en desarrollo; en producción no
 // queremos el costo (ni el ruido) de serializar cada evento del micrófono.
@@ -175,6 +193,11 @@ export function useVoz() {
   const parcialRef = useRef('');
   const procesadoRef = useRef(false);
   const graciaRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Escucha continua: lo dicho se acumula a través de varios segmentos
+  // (Google corta cada 1-2s de silencio) y se procesa todo junto al final.
+  const acumuladoRef = useRef('');
+  const reiniciandoRef = useRef(false);
+  const rearmesRef = useRef(0);
 
   const limpiarTimers = useCallback(() => {
     if (cronometroRef.current) { clearInterval(cronometroRef.current); cronometroRef.current = null; }
@@ -183,11 +206,7 @@ export function useVoz() {
     setSegundos(0);
   }, []);
 
-  // Procesa la transcripción → lista de productos (uno o varios).
-  // Una sola sesión de reconocimiento: el SpeechRecognizer entrega TODO lo
-  // dicho (con la tolerancia a pausas de OPCIONES_VOZ) en un único resultado,
-  // que aquí dividimos en varios productos. NO re-armamos el reconocedor —
-  // eso causaba ANR/crashes por llamar start()/stop() en ráfaga.
+  // Procesa la transcripción completa → lista de productos (uno o varios).
   const procesar = useCallback(async (transcripcion: string) => {
     const texto = transcripcion.trim();
     if (!texto) { setEstado('inactivo'); return; }
@@ -213,86 +232,128 @@ export function useVoz() {
     }
   }, []);
 
+  /** Cierra un segmento: pasa lo reconocido al acumulado de la sesión. */
+  const capturarSegmento = useCallback((texto: string) => {
+    const t = texto.trim();
+    if (t) {
+      acumuladoRef.current = (acumuladoRef.current + ' ' + t).trim();
+      logVoz('segmento capturado →', JSON.stringify(acumuladoRef.current));
+    }
+    parcialRef.current = '';
+  }, []);
+
+  /** Termina la escucha y procesa TODO lo dicho en la sesión. */
+  const finalizar = useCallback(() => {
+    if (procesadoRef.current) return;
+    procesadoRef.current = true;
+    escuchandoRef.current = false;
+    limpiarTimers();
+    const texto = (acumuladoRef.current + ' ' + parcialRef.current).trim();
+    acumuladoRef.current = '';
+    parcialRef.current = '';
+    procesar(texto);
+  }, [procesar, limpiarTimers]);
+
+  /**
+   * Vuelve a abrir el micrófono para seguir escuchando al vendedor.
+   *
+   * Google corta la sesión a ~1-2s de silencio e IGNORA los extras de
+   * duración que le pedimos, así que la única forma de dejar pensar al
+   * vendedor es re-armar el reconocedor. El re-arme está ACOTADO a
+   * propósito: guarda de reentrada + espera entre intentos + tope de
+   * re-armes. Un bucle de start() sin freno satura el hilo principal y
+   * Android mata la app por ANR (ya nos pasó).
+   */
+  const rearmar = useCallback(() => {
+    const Voice = getVoice();
+    if (!Voice || !escuchandoRef.current || reiniciandoRef.current) return;
+    if (rearmesRef.current >= MAX_REARMES) {
+      logVoz('tope de re-armes alcanzado → finalizando');
+      finalizar();
+      return;
+    }
+    reiniciandoRef.current = true;
+    rearmesRef.current += 1;
+    setTimeout(async () => {
+      reiniciandoRef.current = false;
+      if (!escuchandoRef.current) return;
+      try {
+        await Voice.start(LOCALE_ES, OPCIONES_VOZ);
+        logVoz('re-armado #' + rearmesRef.current);
+      } catch {
+        // Si no se pudo reabrir, cerramos con lo que ya se entendió
+        finalizar();
+      }
+    }, PAUSA_REARME_MS);
+  }, [finalizar]);
+
   // Parciales: Google los emite en vivo mientras el vendedor habla.
-  // Guardamos el último no vacío como respaldo de la sesión.
   const handleParciales = useCallback((e: { value?: string[] }) => {
     const texto = e.value?.find((v) => v && v.trim().length > 0)?.trim() ?? '';
     if (texto && texto !== parcialRef.current) {
       parcialRef.current = texto;
-      logVoz('onSpeechPartialResults →', JSON.stringify(texto));
+      logVoz('parcial →', JSON.stringify(texto));
     }
   }, []);
 
-  // Timer de gracia: si tras onSpeechEnd (o tras stop()) no llega NINGÚN
-  // evento en 2s, cerramos la sesión nosotros con lo que haya en el parcial.
-  const programarGracia = useCallback(() => {
+  // Fin de un segmento por silencio. Si el vendedor sigue con el micrófono
+  // encendido, reabrimos; el timer de gracia cubre el caso en que el nativo
+  // cierre sin emitir resultado ni error.
+  const handleFinDeVoz = useCallback(() => {
+    logVoz('onSpeechEnd (escuchando=' + escuchandoRef.current + ')');
+    if (procesadoRef.current) return;
     if (graciaRef.current) clearTimeout(graciaRef.current);
     graciaRef.current = setTimeout(() => {
       graciaRef.current = null;
       if (procesadoRef.current) return;
-      escuchandoRef.current = false;
-      limpiarTimers();
-      if (parcialRef.current) {
-        logVoz('sin resultado tras onSpeechEnd → usando parcial');
-        procesadoRef.current = true;
-        procesar(parcialRef.current);
-      } else {
-        setEstado('inactivo');
-      }
-    }, 2000);
-  }, [procesar, limpiarTimers]);
+      capturarSegmento(parcialRef.current);
+      if (escuchandoRef.current) rearmar();
+      else finalizar();
+    }, GRACIA_MS);
+  }, [capturarSegmento, rearmar, finalizar]);
 
-  const handleFinDeVoz = useCallback(() => {
-    logVoz('onSpeechEnd');
-    if (!procesadoRef.current) programarGracia();
-  }, [programarGracia]);
-
-  // Resultado final de la sesión (fin natural por silencio O tras detener).
+  // Resultado de un segmento (no de la sesión completa).
   const handleResultados = useCallback((e: { value?: string[] }) => {
-    logVoz('onSpeechResults e.value=', JSON.stringify(e.value));
-    escuchandoRef.current = false;
-    limpiarTimers();
+    logVoz('onSpeechResults =', JSON.stringify(e.value));
+    if (procesadoRef.current) return;
+    if (graciaRef.current) { clearTimeout(graciaRef.current); graciaRef.current = null; }
     const final = e.value?.find((v) => v && v.trim().length > 0)?.trim() ?? '';
-    if (final) {
-      procesadoRef.current = true;
-      procesar(final);
-      return;
-    }
-    // Resultado final vacío o nulo (visto en algunos OEMs con este motor):
-    // rescatar el último parcial en vez de descartar lo dicho.
-    if (!procesadoRef.current && parcialRef.current) {
-      logVoz('final vacío → usando parcial:', JSON.stringify(parcialRef.current));
-      procesadoRef.current = true;
-      procesar(parcialRef.current);
-      return;
-    }
-    if (!procesadoRef.current) setEstado('inactivo');
-  }, [procesar, limpiarTimers]);
+    // Este OEM devuelve el final vacío aunque haya transcrito: el parcial
+    // es la fuente real de lo dicho.
+    capturarSegmento(final || parcialRef.current);
+    if (escuchandoRef.current) rearmar();
+    else finalizar();
+  }, [capturarSegmento, rearmar, finalizar]);
 
   const handleError = useCallback((e: { error?: { message?: string; code?: string } }) => {
-    logVoz('onSpeechError e=', JSON.stringify(e));
+    const code = String(e.error?.code ?? '');
+    logVoz('onSpeechError code=' + code + ' escuchando=' + escuchandoRef.current);
+    if (procesadoRef.current) return;
+    if (graciaRef.current) { clearTimeout(graciaRef.current); graciaRef.current = null; }
+
+    // 5=client, 6=speech timeout, 7=no match, 8=busy: no son errores reales,
+    // son el silencio de alguien que está pensando. Se rescata lo que haya
+    // y se sigue escuchando.
+    const esSilencio = code === '5' || code === '6' || code === '7' || code === '8' || code === 'no-speech';
+    if (esSilencio) {
+      capturarSegmento(parcialRef.current);
+      if (escuchandoRef.current) rearmar();
+      else finalizar();
+      return;
+    }
+
+    // Error de verdad (sin permiso, micrófono ocupado por otra app, etc.)
+    capturarSegmento(parcialRef.current);
+    if (acumuladoRef.current) {
+      finalizar(); // no perder lo que ya se había entendido
+      return;
+    }
     escuchandoRef.current = false;
     limpiarTimers();
-    if (procesadoRef.current) return; // la sesión ya se resolvió con parcial/final
-    const code = String(e.error?.code ?? '');
-    // 6=speech timeout, 7=no match: si Google alcanzó a transcribir parciales,
-    // lo dicho es rescatable aunque el "final" haya fallado.
-    if ((code === '6' || code === '7') && parcialRef.current) {
-      logVoz('error', code, '→ rescatando parcial:', JSON.stringify(parcialRef.current));
-      procesadoRef.current = true;
-      procesar(parcialRef.current);
-      return;
-    }
-    // 5=client, 6=speech timeout, 7=no match: el usuario no dijo nada
-    // reconocible — no es un error real, simplemente volvemos a inactivo.
-    if (code === '5' || code === '6' || code === '7' || code === 'no-speech') {
-      setEstado('inactivo');
-      return;
-    }
     setErrorMensaje(e.error?.message ?? 'Error de reconocimiento');
     setEstado('error');
     setTimeout(() => setEstado('inactivo'), 3000);
-  }, [procesar, limpiarTimers]);
+  }, [capturarSegmento, rearmar, finalizar, limpiarTimers]);
 
   useEffect(() => {
     const Voice = getVoice();
@@ -311,24 +372,22 @@ export function useVoz() {
     };
   }, [handleResultados, handleParciales, handleFinDeVoz, handleError, limpiarTimers]);
 
-  // Detiene la escucha (toque del vendedor). Voice.stop() hace que el
-  // reconocedor entregue el resultado final vía onSpeechResults, que procesa.
+  // El vendedor apaga el micrófono: se cierra el segmento en curso y se
+  // procesa TODO lo acumulado en la sesión.
   const detenerEscucha = useCallback(async () => {
     if (!escuchandoRef.current) { setEstado('inactivo'); return; }
-    escuchandoRef.current = false;
-    limpiarTimers();
-    const Voice = getVoice();
-    if (!Voice) { setEstado('inactivo'); return; }
+    escuchandoRef.current = false; // corta el ciclo de re-armes
+    if (limiteRef.current) { clearTimeout(limiteRef.current); limiteRef.current = null; }
+    if (cronometroRef.current) { clearInterval(cronometroRef.current); cronometroRef.current = null; }
     setEstado('procesando');
-    try {
-      await Voice.stop();
-      // Si el nativo no responde con resultado ni error, la gracia cierra
-      // la sesión con el último parcial (o vuelve a inactivo).
-      programarGracia();
-    } catch {
-      setEstado('inactivo');
-    }
-  }, [limpiarTimers, programarGracia]);
+    const Voice = getVoice();
+    if (!Voice) { finalizar(); return; }
+    try { await Voice.stop(); } catch { /* noop */ }
+    // Darle un momento al nativo para emitir el último resultado; si no
+    // llega, se cierra igual con lo acumulado.
+    if (graciaRef.current) clearTimeout(graciaRef.current);
+    graciaRef.current = setTimeout(() => { graciaRef.current = null; finalizar(); }, GRACIA_MS);
+  }, [finalizar]);
 
   const iniciarEscucha = useCallback(async () => {
     const Voice = getVoice();
@@ -349,7 +408,10 @@ export function useVoz() {
       setResultado(null);
       setErrorMensaje(null);
       parcialRef.current = '';
+      acumuladoRef.current = '';
       procesadoRef.current = false;
+      reiniciandoRef.current = false;
+      rearmesRef.current = 0;
       escuchandoRef.current = true;
       setEstado('escuchando');
       setSegundos(0);

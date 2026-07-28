@@ -79,6 +79,53 @@ function nucleoNombre(nombre: string): string {
 }
 
 /**
+ * Distancia de edición (Levenshtein): cuántos cambios de una letra separan
+ * dos palabras. "marucha"→"maruchan" = 1.
+ * Se usa para rescatar transcripciones imperfectas, que abundan cuando el
+ * reconocimiento corre sin internet o hay ruido en el local.
+ */
+export function distanciaEdicion(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let previa = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const actual = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const costo = a[i - 1] === b[j - 1] ? 0 : 1;
+      actual[j] = Math.min(
+        previa[j] + 1,        // borrar
+        actual[j - 1] + 1,    // insertar
+        previa[j - 1] + costo // sustituir
+      );
+    }
+    previa = actual;
+  }
+  return previa[b.length];
+}
+
+/**
+ * Tolerancia de errores según el largo de la palabra.
+ * Hasta 3 letras no se tolera NADA: pan/sal/sol/paz se volverían
+ * intercambiables. De 4 en adelante sí, porque el nombre sigue siendo
+ * reconocible ("kola"→"cola", "marucha"→"maruchan") y quien elige entre
+ * varios candidatos es la distancia más baja, no esta función.
+ */
+function toleranciaTipografica(largo: number): number {
+  if (largo <= 3) return 0;
+  if (largo <= 6) return 1;
+  return 2;
+}
+
+/** ¿Dos palabras son "la misma" pese a un error de transcripción? */
+export function palabraSimilar(dicha: string, delNombre: string): boolean {
+  if (palabraCoincide(dicha, delNombre)) return true;
+  const tolerancia = toleranciaTipografica(Math.max(dicha.length, delNombre.length));
+  if (tolerancia === 0) return false;
+  return distanciaEdicion(dicha, delNombre) <= tolerancia;
+}
+
+/**
  * Regla de oro del matching: LO DICHO MANDA.
  * Si lo que el vendedor dijo corresponde al NOMBRE de un producto que
  * existe, ese producto gana — sin importar cuánto se parezca a sinónimos
@@ -112,6 +159,53 @@ export function seleccionarPorNombre<T extends { nombre: string }>(
     })
     .sort((a, b) => a.nucleo.length - b.nucleo.length)
     .map((c) => c.p);
+}
+
+/**
+ * ÚLTIMO RECURSO: encontrar el producto pese a errores de transcripción.
+ *
+ * Solo se llama cuando fallaron el nombre exacto y las palabras clave, así
+ * que no compite con la regla "lo dicho manda" — entra cuando la
+ * alternativa es no encontrar nada. Es lo que salva las transcripciones
+ * imperfectas del reconocimiento sin internet y de los locales ruidosos.
+ *
+ * Devuelve UN solo producto (el más parecido) y solo si el parecido es
+ * claramente mejor que el resto; ante un empate prefiere no adivinar, para
+ * no vender el producto equivocado.
+ */
+export function seleccionarPorParecido<T extends { nombre: string }>(
+  palabras: string[],
+  productos: T[]
+): T[] {
+  if (palabras.length === 0 || productos.length === 0) return [];
+
+  const puntuados = productos
+    .map((p) => {
+      const tokens = nucleoNombre(p.nombre).split(' ').filter(Boolean);
+      // Cuántas de las palabras dichas encuentran pareja en el nombre, y
+      // qué tan lejos quedaron (menos distancia = mejor)
+      let aciertos = 0;
+      let distanciaTotal = 0;
+      for (const dicha of palabras) {
+        let mejor = Infinity;
+        for (const t of tokens) {
+          if (palabraSimilar(dicha, t)) {
+            mejor = Math.min(mejor, distanciaEdicion(dicha, t));
+          }
+        }
+        if (mejor !== Infinity) { aciertos++; distanciaTotal += mejor; }
+      }
+      return { p, aciertos, distanciaTotal };
+    })
+    .filter((x) => x.aciertos === palabras.length) // todas las palabras dichas
+    .sort((a, b) => a.distanciaTotal - b.distanciaTotal);
+
+  if (puntuados.length === 0) return [];
+  // Empate en el mejor puntaje → ambiguo, mejor no adivinar
+  if (puntuados.length > 1 && puntuados[0].distanciaTotal === puntuados[1].distanciaTotal) {
+    return [];
+  }
+  return [puntuados[0].p];
 }
 
 /**

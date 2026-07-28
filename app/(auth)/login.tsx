@@ -249,7 +249,7 @@ export default function PantallaLogin() {
         onRequestClose={() => setRecuperarVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={s.modalOverlay}
         >
           <View style={s.modalContenido}>

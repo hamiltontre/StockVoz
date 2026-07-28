@@ -50,7 +50,7 @@ export function ModalBuscarProducto({ visible, onCerrar, onSeleccionar }: Props)
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCerrar}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
         style={s.overlay}
       >
         <View style={s.contenedor}>

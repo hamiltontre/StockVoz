@@ -300,7 +300,7 @@ export default function PantallaInventario() {
       {/* Modal crear/editar */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={s.modalOverlay}
         >
           <View style={s.modalContenido}>
