@@ -349,7 +349,15 @@ export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] 
     // segmento; la conversión a unidades (×12) se decide al agregar al
     // carrito según la unidad del producto.
     if (token === 'docena' || token === 'docenas') {
-      if (curWords.length === 0) {
+      if (curWords.length > 0 && curQty != null) {
+        // Igual que "media" y las unidades: el producto en curso ya tiene
+        // cantidad, así que esta "docena" abre uno nuevo. Sin esto,
+        // "media docena de bananos docena y media de tornillos" perdía el
+        // "1" de la docena y los tornillos quedaban en 0.5 en vez de 1.5.
+        emitir();
+        pendingQty = 1;
+        pendingDocena = true;
+      } else if (curWords.length === 0) {
         if (pendingQty == null) pendingQty = 1; // "docena de clavos" = 1 docena
         pendingDocena = true;
       } else {
