@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Alert, ScrollView, ActivityIndicator,
+  Alert, ScrollView, ActivityIndicator, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,8 @@ import { UsuarioRepository } from '../../src/database/repositories/UsuarioReposi
 import { ApiCliente } from '../../src/services/apiCliente';
 import { ConfigRepository, CLAVES } from '../../src/database/repositories/ConfigRepository';
 import { useRespaldo } from '../../src/hooks/useRespaldo';
+import { cargarProductosDemo } from '../../src/database/seedDemo';
+import { VozLogRepository, type ResumenVoz } from '../../src/database/repositories/VozLogRepository';
 import type { Negocio } from '../../src/types';
 
 import { COLORES as C } from '../../src/theme/colors';
@@ -32,6 +34,56 @@ export default function PantallaAjustes() {
     diasSinRespaldo, necesitaRespaldo,
     generando: generandoRespaldo, respaldar,
   } = useRespaldo();
+  const [cargandoDemo, setCargandoDemo] = useState(false);
+  const [resumenVoz, setResumenVoz] = useState<ResumenVoz | null>(null);
+
+  const cargarResumenVoz = useCallback(async () => {
+    const r = await VozLogRepository.resumen();
+    if (r.ok) setResumenVoz(r.data);
+  }, []);
+
+  useEffect(() => { cargarResumenVoz(); }, [cargarResumenVoz]);
+
+  const cargarDemo = useCallback(() => {
+    Alert.alert(
+      'Cargar productos de ejemplo',
+      'Se agregarán ~38 productos de prueba con sus palabras clave.\n\nNo se borra ni se duplica nada de lo que ya tenés.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cargar',
+          onPress: async () => {
+            setCargandoDemo(true);
+            const r = await cargarProductosDemo();
+            setCargandoDemo(false);
+            Alert.alert(
+              'Listo',
+              `${r.creados} productos creados` +
+                (r.omitidos ? `\n${r.omitidos} ya existían` : '') +
+                `\n${r.claves} palabras clave` +
+                (r.errores.length ? `\n\nErrores: ${r.errores.slice(0, 3).join('; ')}` : '')
+            );
+          },
+        },
+      ]
+    );
+  }, []);
+
+  const compartirDiagnostico = useCallback(async () => {
+    const texto = await VozLogRepository.generarReporte();
+    try { await Share.share({ message: texto }); } catch { /* canceló */ }
+  }, []);
+
+  const limpiarDiagnostico = useCallback(() => {
+    Alert.alert('Borrar diagnóstico', '¿Borrar el registro de comandos de voz?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: async () => { await VozLogRepository.limpiar(); cargarResumenVoz(); },
+      },
+    ]);
+  }, [cargarResumenVoz]);
   const [negocio, setNegocio] = useState<Negocio | null>(null);
   const [nombreEditable, setNombreEditable] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -384,6 +436,66 @@ export default function PantallaAjustes() {
           </View>
         </Seccion>
 
+        {/* Pruebas y diagnóstico — solo admin */}
+        {esAdmin && (
+          <Seccion titulo="PRUEBAS Y DIAGNÓSTICO">
+            <View style={{ gap: 12 }}>
+              <TouchableOpacity
+                style={s.btnSecundarioAncho}
+                onPress={cargarDemo}
+                disabled={cargandoDemo}
+                activeOpacity={0.85}
+              >
+                {cargandoDemo ? (
+                  <ActivityIndicator color={C.acento} />
+                ) : (
+                  <>
+                    <Ionicons name="cube-outline" size={18} color={C.acento} />
+                    <Text style={s.btnSecundarioAnchoTexto}>Cargar productos de ejemplo</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <Text style={s.notaChica}>
+                Agrega ~38 productos de pulpería, farmacia, ferretería y ropa
+                con sus palabras clave. No borra ni duplica lo que ya tenés.
+              </Text>
+
+              <View style={s.fila}>
+                <View style={s.filaIcono}>
+                  <Ionicons name="mic-outline" size={20} color={C.acento} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.filaLabel}>Precisión de la voz</Text>
+                  <Text style={s.filaSub}>
+                    {resumenVoz && resumenVoz.total > 0
+                      ? `${resumenVoz.productosEncontrados}/${resumenVoz.productosBuscados} productos (${Math.round((resumenVoz.productosEncontrados / Math.max(1, resumenVoz.productosBuscados)) * 100)}%) · ${resumenVoz.total} comandos`
+                      : 'Sin comandos registrados todavía'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={[s.btnSecundarioAncho, { flex: 1 }]}
+                  onPress={compartirDiagnostico}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="share-outline" size={16} color={C.acento} />
+                  <Text style={s.btnSecundarioAnchoTexto}>Enviar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.btnSecundarioAncho, { flex: 1 }]}
+                  onPress={limpiarDiagnostico}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="trash-outline" size={16} color={C.rojo} />
+                  <Text style={[s.btnSecundarioAnchoTexto, { color: C.rojo }]}>Borrar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Seccion>
+        )}
+
         {/* Seguridad */}
         <Seccion titulo="SEGURIDAD">
           <View style={{ gap: 12 }}>
@@ -515,6 +627,12 @@ const s = StyleSheet.create({
   },
   btnRespaldoTexto: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   respaldoNota: { fontSize: 11, color: C.subtexto, lineHeight: 16 },
+  btnSecundarioAncho: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1.5, borderColor: C.acento, borderRadius: 12, paddingVertical: 13,
+  },
+  btnSecundarioAnchoTexto: { color: C.acento, fontSize: 14, fontWeight: '700' },
+  notaChica: { fontSize: 11, color: C.subtexto, lineHeight: 16 },
   inputNombre: {
     fontSize: 15, color: C.texto, fontWeight: '500',
     borderBottomWidth: 1, borderBottomColor: C.acento, paddingBottom: 2,

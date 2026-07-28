@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
+import { VozLogRepository } from '../database/repositories/VozLogRepository';
 import {
   parsearMultiplesProductos,
   seleccionarPorNombre,
@@ -241,6 +242,15 @@ export function useVoz() {
         });
       }
       setResultado({ transcripcion: texto, items });
+      // Registrar para poder medir la precisión de la voz con números
+      VozLogRepository.registrar(
+        texto,
+        items.map((i) => ({
+          cantidad: i.cantidad,
+          palabras: i.palabras,
+          encontrado: i.productosEncontrados.length > 0,
+        }))
+      );
       setEstado('inactivo');
     } catch {
       setErrorMensaje('Error al procesar el audio');

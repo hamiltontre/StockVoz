@@ -229,6 +229,25 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
       `ALTER TABLE usuarios ADD COLUMN pin_reseteado_en TEXT`,
     ],
   },
+  {
+    // Migración v9 — diagnóstico de voz.
+    // La voz es el diferenciador del producto y hasta ahora se evaluaba de
+    // oído ("funciona bien"). Esta tabla guarda qué se escuchó y si acertó,
+    // para poder medir la precisión con números y ver el patrón de fallos
+    // en vez de adivinar. Se puede vaciar cuando se quiera.
+    version: 9,
+    sentencias: [
+      `CREATE TABLE IF NOT EXISTS voz_log (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        transcripcion TEXT    NOT NULL,
+        segmentos     TEXT    NOT NULL,  -- JSON: qué entendió por producto
+        encontrados   INTEGER NOT NULL DEFAULT 0,
+        no_encontrados INTEGER NOT NULL DEFAULT 0,
+        creado_en     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_voz_log_fecha ON voz_log(creado_en)`,
+    ],
+  },
 ];
 
 /**
