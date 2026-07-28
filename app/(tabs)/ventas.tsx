@@ -42,6 +42,9 @@ export default function PantallaVentas() {
   const [reciboVisible, setReciboVisible] = useState(false);
   const [ventaRecibo, setVentaRecibo] = useState<VentaConDetalle | null>(null);
   const [buscarVisible, setBuscarVisible] = useState(false);
+  // Frases que la voz no reconoció y que el vendedor va a asociar a un
+  // producto (null = el buscador funciona normal, agregando al carrito).
+  const [ensenando, setEnsenando] = useState<string[] | null>(null);
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
   const { sesion } = useSesion();
@@ -81,6 +84,7 @@ export default function PantallaVentas() {
   // reconocidos al carrito de una sola pasada.
   useEffect(() => {
     if (!resultadoVoz) return;
+    const transcripcion = resultadoVoz.transcripcion;
     const noEncontrados: string[] = [];
     let agregados = 0;
     for (const item of resultadoVoz.items) {
@@ -101,13 +105,50 @@ export default function PantallaVentas() {
     }
     limpiar();
     if (noEncontrados.length > 0) {
+      // Mostrar lo que REALMENTE se escuchó: marcas como "Faisán" salen
+      // transcritas de formas raras y el vendedor no tiene cómo saberlo.
+      // Con el texto a la vista puede enseñarle a la app de una vez.
       Alert.alert(
-        agregados > 0 ? 'Algunos productos no se encontraron' : 'No se encontraron productos',
-        `No encontré: ${noEncontrados.join(', ')}.` +
-          (agregados > 0 ? `\nAgregué ${agregados} al carrito.` : '')
+        agregados > 0 ? 'Algunos no se encontraron' : 'No encontré el producto',
+        `Escuché: «${transcripcion}»\n\n` +
+          `No tengo: ${noEncontrados.join(', ')}` +
+          (agregados > 0 ? `\n\nAgregué ${agregados} al carrito.` : ''),
+        [
+          { text: 'Cerrar', style: 'cancel' },
+          {
+            text: 'Enseñarle a StockVoz',
+            onPress: () => { setEnsenando(noEncontrados); setBuscarVisible(true); },
+          },
+        ]
       );
     }
   }, [resultadoVoz]);
+
+  /**
+   * Aprendizaje: lo que la app no entendió se guarda como palabra clave del
+   * producto que el vendedor señale. La próxima vez que Google transcriba
+   * igual, el producto aparece. Cada error se convierte en mejora.
+   */
+  const ensenarProducto = useCallback(async (producto: Producto) => {
+    const frases = ensenando ?? [];
+    setEnsenando(null);
+    let agregadas = 0;
+    for (const frase of frases) {
+      // La frase completa y cada palabra suelta: cubre tanto
+      // "arroz faisan" como "faisan" dicho solo.
+      const variantes = [frase, ...frase.split(/\s+/)].filter((v) => v.length >= 3);
+      for (const v of new Set(variantes)) {
+        const r = await ProductoRepository.agregarPalabraClave(producto.id, v);
+        if (r.ok) agregadas++;
+      }
+    }
+    Alert.alert(
+      '✓ Aprendido',
+      agregadas > 0
+        ? `La próxima vez que digas eso, StockVoz va a entender "${producto.nombre}".`
+        : 'No se pudo guardar. Intentá desde Inventario → 🎤 del producto.'
+    );
+  }, [ensenando]);
 
   const agregarAlCarrito = useCallback((producto: Producto, cantidad = 1) => {
     setCarrito((prev) => {
@@ -434,8 +475,12 @@ export default function PantallaVentas() {
 
       <ModalBuscarProducto
         visible={buscarVisible}
-        onCerrar={() => setBuscarVisible(false)}
-        onSeleccionar={(p) => agregarAlCarrito(p, 1)}
+        titulo={ensenando ? '¿Cuál era el producto?' : undefined}
+        onCerrar={() => { setBuscarVisible(false); setEnsenando(null); }}
+        onSeleccionar={(p) => {
+          if (ensenando) ensenarProducto(p);
+          else agregarAlCarrito(p, 1);
+        }}
       />
 
       <ModalRecibo

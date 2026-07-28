@@ -258,8 +258,25 @@ export function parsearTranscripcion(transcripcion: string): { cantidad: number;
  *   "media libra de arroz"         → [{0.5,[arroz]}]
  *   "docena y media de tornillos"  → [{1.5,[tornillos],enDocenas}]
  */
+/**
+ * Normaliza las formas en que el reconocedor escribe las fracciones ANTES
+ * de limpiar el texto. Sin esto "1/2 libra" se convierte en "1 2 libra"
+ * (la normalización borra la barra) y se leería como dos cantidades
+ * distintas. Google alterna entre "media", "1/2" y "½" sin previo aviso.
+ */
+export function normalizarFracciones(texto: string): string {
+  return texto
+    .replace(/½/g, ' media ')
+    .replace(/(\d)\s*\/\s*2\b/g, (_m, entero) =>
+      entero === '1' ? ' media ' : ` ${entero} media `
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] {
-  const tokens = normalizarTexto(transcripcion).split(/\s+/).filter(Boolean);
+  const tokens = normalizarTexto(normalizarFracciones(transcripcion))
+    .split(/\s+/).filter(Boolean);
   const segmentos: SegmentoVoz[] = [];
 
   let curWords: string[] = [];

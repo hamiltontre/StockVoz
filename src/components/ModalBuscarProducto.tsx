@@ -12,6 +12,12 @@ import type { Producto } from '../types';
 
 interface Props {
   visible: boolean;
+  /**
+   * Título alterno. Su presencia indica el modo "enseñar a la voz": ahí se
+   * puede elegir cualquier producto, incluso agotado, porque no se está
+   * vendiendo sino asociando una palabra que la voz no entendió.
+   */
+  titulo?: string;
   onCerrar: () => void;
   onSeleccionar: (producto: Producto) => void;
 }
@@ -20,7 +26,7 @@ interface Props {
  * Búsqueda manual de productos para agregar al carrito sin voz.
  * Útil cuando el ambiente es muy ruidoso o la voz no está disponible.
  */
-export function ModalBuscarProducto({ visible, onCerrar, onSeleccionar }: Props) {
+export function ModalBuscarProducto({ visible, titulo, onCerrar, onSeleccionar }: Props) {
   const [busqueda, setBusqueda] = useState('');
   const [productos, setProductos] = useState<Producto[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -42,7 +48,7 @@ export function ModalBuscarProducto({ visible, onCerrar, onSeleccionar }: Props)
   }, [visible, buscar]);
 
   const seleccionar = (p: Producto) => {
-    if (p.stock === 0) return; // No agregar productos sin stock
+    if (p.stock === 0 && !titulo) return; // sin stock no se vende (sí se puede enseñar)
     onSeleccionar(p);
     onCerrar();
   };
@@ -55,7 +61,7 @@ export function ModalBuscarProducto({ visible, onCerrar, onSeleccionar }: Props)
       >
         <View style={s.contenedor}>
           <View style={s.header}>
-            <Text style={s.titulo}>Agregar producto</Text>
+            <Text style={s.titulo}>{titulo ?? 'Agregar producto'}</Text>
             <TouchableOpacity onPress={onCerrar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="close" size={26} color={C.subtexto} />
             </TouchableOpacity>
@@ -99,7 +105,7 @@ export function ModalBuscarProducto({ visible, onCerrar, onSeleccionar }: Props)
                 <TouchableOpacity
                   style={[s.item, item.stock === 0 && s.itemAgotado]}
                   onPress={() => seleccionar(item)}
-                  disabled={item.stock === 0}
+                  disabled={item.stock === 0 && !titulo}
                   activeOpacity={0.7}
                 >
                   <View style={{ flex: 1 }}>
