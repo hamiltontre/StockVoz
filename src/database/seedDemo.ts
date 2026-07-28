@@ -88,7 +88,89 @@ export const PRODUCTOS_DEMO: ProductoDemo[] = [
   P('Camiseta blanca', 150, 100, 20, 'unidad', { claves: ['camiseta', 'camisa blanca'] }),
   P('Calcetines', 45, 30, 30, 'par', { docena: 480, claves: ['calcetin', 'medias'] }),
   P('Gorra', 180, 130, 12, 'unidad', { minimo: 3, claves: ['gorra'] }),
-  P('Pantalón jeans', 480, 350, 10, 'unidad', { minimo: 2, claves: ['pantalon', 'jeans'] }),
+  P('Pantalón jeans', 480, 350, 10, 'unidad', { minimo: 2, claves: ['pantalon', 'jeans', 'pantalon gym'] }),
+
+  // ─── Más pulpería: bebidas y snacks ─────────────────────────────────
+  P('Pepsi 350 ml', 19, 14, 40, 'unidad', { docena: 210, claves: ['pepsi'] }),
+  P('Sprite 350 ml', 19, 14, 36, 'unidad', { docena: 210, claves: ['sprite'] }),
+  P('Coca Cola 1.5 litros', 55, 44, 18, 'unidad', { claves: ['coca grande', 'coca cola grande'] }),
+  P('Agua pura Alpina', 15, 10, 50, 'unidad', { claves: ['agua', 'agua pura'] }),
+  P('Meneítos', 10, 7, 60, 'unidad', { claves: ['meneitos', 'meneito'] }),
+  P('Tortrix', 12, 8, 50, 'unidad', { claves: ['tortrix'] }),
+  P('Galletas María', 15, 11, 40, 'unidad', { claves: ['galletas maria', 'galleta maria'] }),
+  P('Chiky', 14, 10, 45, 'unidad', { claves: ['chiky', 'chiki'] }),
+  P('Pan Bimbo', 65, 52, 12, 'unidad', { vence: '2026-09-15', claves: ['bimbo', 'pan de molde'] }),
+  P('Café Toro', 95, 78, 20, 'unidad', { claves: ['cafe toro', 'toro'] }),
+  P('Avena', 32, 25, 25, 'libra', { claves: ['avena'] }),
+  P('Cacao', 40, 32, 20, 'libra', { claves: ['cacao'] }),
+
+  // ─── Más pulpería: básicos y abarrotes ──────────────────────────────
+  P('Sal', 12, 8, 40, 'libra', { claves: ['sal'] }),
+  P('Vinagre', 25, 19, 20, 'unidad', { claves: ['vinagre'] }),
+  P('Salsa de tomate', 30, 23, 25, 'unidad', { claves: ['salsa tomate', 'ketchup'] }),
+  P('Mayonesa', 55, 44, 18, 'unidad', { claves: ['mayonesa'] }),
+  P('Mostaza', 35, 27, 15, 'unidad', { claves: ['mostaza'] }),
+  P('Frijol negro', 33, 26, 35, 'libra', { claves: ['frijol negro', 'frijoles negros'] }),
+  P('Lentejas', 38, 30, 20, 'libra', { claves: ['lenteja'] }),
+  P('Espagueti', 22, 17, 30, 'unidad', { claves: ['espagueti', 'pasta', 'fideos'] }),
+  P('Atún', 38, 30, 30, 'unidad', { claves: ['atun'] }),
+  P('Sardina', 28, 21, 30, 'unidad', { claves: ['sardina'] }),
+
+  // ─── Lácteos y carnes ───────────────────────────────────────────────
+  P('Queso seco', 90, 72, 15, 'libra', { claves: ['queso', 'queso seco'] }),
+  P('Crema', 55, 44, 12, 'libra', { vence: '2026-08-20', claves: ['crema'] }),
+  P('Mantequilla', 48, 38, 15, 'unidad', { vence: '2026-10-10', claves: ['mantequilla'] }),
+  P('Carne molida', 110, 90, 20, 'libra', { claves: ['carne molida', 'carne'] }),
+  P('Costilla de cerdo', 95, 78, 18, 'libra', { claves: ['costilla', 'costilla cerdo'] }),
+  P('Chorizo', 85, 68, 15, 'libra', { claves: ['chorizo'] }),
+
+  // ─── Limpieza e higiene ─────────────────────────────────────────────
+  P('Detergente Xedex', 42, 33, 30, 'unidad', { claves: ['detergente', 'xedex'] }),
+  P('Cloro Magia Blanca', 38, 30, 25, 'unidad', { claves: ['cloro', 'magia blanca'] }),
+  P('Suavitel', 45, 36, 20, 'unidad', { claves: ['suavitel', 'suavizante'] }),
+  P('Esponja', 15, 10, 40, 'unidad', { docena: 160, claves: ['esponja'] }),
+  P('Pasta dental Colgate', 42, 33, 30, 'unidad', { claves: ['colgate', 'pasta dental', 'pasta dientes'] }),
+  P('Shampoo Sedal', 68, 55, 20, 'unidad', { claves: ['shampoo', 'sedal'] }),
+  P('Desodorante', 75, 60, 18, 'unidad', { claves: ['desodorante'] }),
+  P('Rastrillo', 18, 12, 35, 'unidad', { docena: 190, claves: ['rastrillo', 'maquina afeitar'] }),
+
+  // ─── Más farmacia ───────────────────────────────────────────────────
+  P('Panadol', 5, 3.5, 150, 'unidad', {
+    vence: '2027-05-31', claves: ['panadol', 'acetaminofen', 'pastilla dolor'],
+  }),
+  P('Loratadina', 6, 4, 80, 'unidad', { vence: '2027-04-30', claves: ['loratadina', 'alergia'] }),
+  P('Omeprazol', 9, 6.5, 60, 'unidad', { vence: '2027-02-28', claves: ['omeprazol', 'gastritis'] }),
+  P('Aspirina', 4, 2.5, 100, 'unidad', { vence: '2027-08-31', claves: ['aspirina'] }),
+  P('Sal Andrews', 8, 5.5, 70, 'unidad', { claves: ['sal andrews', 'andrews'] }),
+  P('Alka Seltzer', 12, 9, 50, 'unidad', { claves: ['alka seltzer', 'alkaseltzer'] }),
+  P('Vitamina C', 7, 5, 90, 'unidad', { vence: '2027-07-31', claves: ['vitamina c', 'vitamina'] }),
+  P('Jeringa', 6, 4, 60, 'unidad', { docena: 65, claves: ['jeringa'] }),
+  P('Mascarilla', 5, 3, 100, 'unidad', { docena: 55, claves: ['mascarilla', 'cubrebocas'] }),
+  P('Gasa', 10, 7, 50, 'unidad', { claves: ['gasa'] }),
+
+  // ─── Más ferretería ─────────────────────────────────────────────────
+  P('Alicate', 145, 115, 8, 'unidad', { minimo: 2, claves: ['alicate', 'pinza'] }),
+  P('Desarmador', 95, 75, 12, 'unidad', { minimo: 3, claves: ['desarmador', 'destornillador'] }),
+  P('Llave inglesa', 210, 170, 6, 'unidad', { minimo: 2, claves: ['llave inglesa', 'llave'] }),
+  P('Serrucho', 175, 140, 7, 'unidad', { minimo: 2, claves: ['serrucho'] }),
+  P('Broca', 45, 33, 25, 'unidad', { docena: 480, claves: ['broca'] }),
+  P('Cable eléctrico', 32, 24, 40, 'metro', { claves: ['cable', 'cable electrico'] }),
+  P('Interruptor', 55, 42, 20, 'unidad', { claves: ['interruptor', 'apagador'] }),
+  P('Tomacorriente', 65, 50, 18, 'unidad', { claves: ['tomacorriente', 'toma'] }),
+  P('Tape', 25, 18, 35, 'unidad', { claves: ['tape', 'cinta aislante'] }),
+  P('Manguera', 38, 28, 30, 'metro', { claves: ['manguera'] }),
+  P('Tubo PVC', 85, 68, 20, 'unidad', { claves: ['tubo', 'tubo pvc', 'pvc'] }),
+  P('Silicón', 55, 42, 15, 'unidad', { claves: ['silicon', 'sellador'] }),
+  P('Lija', 12, 8, 50, 'unidad', { docena: 130, claves: ['lija'] }),
+  P('Brocha', 48, 36, 20, 'unidad', { claves: ['brocha'] }),
+  P('Thinner', 95, 76, 12, 'unidad', { minimo: 3, claves: ['thinner', 'diluyente'] }),
+
+  // ─── Más ropa ───────────────────────────────────────────────────────
+  P('Blusa', 320, 230, 12, 'unidad', { minimo: 3, claves: ['blusa'] }),
+  P('Short', 250, 180, 15, 'unidad', { minimo: 3, claves: ['short', 'pantaloneta'] }),
+  P('Vestido', 550, 400, 8, 'unidad', { minimo: 2, claves: ['vestido'] }),
+  P('Sandalias', 280, 200, 14, 'par', { minimo: 3, claves: ['sandalias', 'chinelas'] }),
+  P('Cinturón', 180, 130, 15, 'unidad', { minimo: 3, claves: ['cinturon', 'faja'] }),
 ];
 
 export interface ResultadoSeed {

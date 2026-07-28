@@ -127,13 +127,25 @@ async function asegurarPermisoMicrofono(): Promise<boolean> {
  * Nivel 3: nombre de producto que contiene el término
  * Nivel 4: combinación de 2 palabras seguidas ("coca cola")
  */
-export async function buscarProductosInteligente(palabras: string[]): Promise<Producto[]> {
+export async function buscarProductosInteligente(
+  palabras: string[],
+  /**
+   * Catálogo ya cargado. Al dictar una lista larga se buscan decenas de
+   * productos seguidos: sin esto se releía el inventario COMPLETO en cada
+   * uno (26 productos dichos = 26 lecturas completas), que en un teléfono
+   * de gama baja se siente. Quien procesa la lista lo carga una sola vez.
+   */
+  catalogo?: Producto[]
+): Promise<Producto[]> {
   if (palabras.length === 0) return [];
 
   // Nivel 0: comparación por nombre en memoria (inventarios pequeños,
   // ≤500 productos) — maneja acentos y plurales mejor que LIKE en SQL.
-  const todosR = await ProductoRepository.obtenerTodos();
-  const todos = todosR.ok ? todosR.data : [];
+  let todos = catalogo;
+  if (!todos) {
+    const todosR = await ProductoRepository.obtenerTodos();
+    todos = todosR.ok ? todosR.data : [];
+  }
   if (todos.length > 0) {
     const porNombre = seleccionarPorNombre(palabras, todos);
     if (porNombre.length > 0) return porNombre;
@@ -231,9 +243,12 @@ export function useVoz() {
     setEstado('procesando');
     try {
       const segmentos = parsearMultiplesProductos(texto);
+      // Catálogo una sola vez para toda la lista dictada, no por producto
+      const catR = await ProductoRepository.obtenerTodos();
+      const catalogo = catR.ok ? catR.data : [];
       const items: ItemVoz[] = [];
       for (const seg of segmentos) {
-        const productosEncontrados = await buscarProductosInteligente(seg.palabras);
+        const productosEncontrados = await buscarProductosInteligente(seg.palabras, catalogo);
         items.push({
           cantidad: seg.cantidad,
           palabras: seg.palabras,
