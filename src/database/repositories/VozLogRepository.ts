@@ -27,6 +27,14 @@ export interface ResumenVoz {
   productosEncontrados: number;
 }
 
+/**
+ * Cuántos comandos se conservan. Es diagnóstico, no historial del negocio:
+ * sin poda el log llegaba a 6.1 MB al año —más que TODAS las ventas juntas
+ * (5.1 MB)— en un negocio con 60 comandos diarios. 500 entradas alcanzan de
+ * sobra para ver el patrón de fallos y pesan ~150 KB.
+ */
+const MAX_ENTRADAS = 500;
+
 export const VozLogRepository = {
   async registrar(
     transcripcion: string,
@@ -35,7 +43,7 @@ export const VozLogRepository = {
     try {
       const db = await getDb();
       const encontrados = segmentos.filter((s) => s.encontrado).length;
-      await db.runAsync(
+      const r = await db.runAsync(
         `INSERT INTO voz_log (transcripcion, segmentos, encontrados, no_encontrados)
          VALUES (?, ?, ?, ?)`,
         [
@@ -45,6 +53,14 @@ export const VozLogRepository = {
           segmentos.length - encontrados,
         ]
       );
+      // Poda cada ~50 registros para no pagar el DELETE en cada venta
+      if (r.lastInsertRowId % 50 === 0) {
+        await db.runAsync(
+          `DELETE FROM voz_log
+           WHERE id NOT IN (SELECT id FROM voz_log ORDER BY id DESC LIMIT ?)`,
+          [MAX_ENTRADAS]
+        );
+      }
     } catch {
       // El diagnóstico nunca debe estorbar una venta
     }
