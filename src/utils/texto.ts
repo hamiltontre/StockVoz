@@ -13,7 +13,10 @@ export function normalizarTexto(texto: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '') // tildes y diéresis
-    .replace(/[^a-z0-9\s]/g, '')     // símbolos
+    // Los símbolos se vuelven ESPACIO, no se borran: el reconocedor escribe
+    // "coca-cola" y al borrar el guion quedaba "cocacola" pegado, que ya no
+    // coincidía con el producto "Coca Cola". Separar es siempre más seguro.
+    .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

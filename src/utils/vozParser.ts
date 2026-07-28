@@ -335,6 +335,12 @@ export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] 
         // patrón sufijo poco común ("arroz media") → cantidad 0.5
         curQty = 0.5;
         emitir();
+      } else {
+        // El producto en curso YA tiene cantidad: este "media" abre uno
+        // nuevo. Sin esto "5 huevos media libra de arroz" se fusionaba en
+        // un solo item ("5 × huevos arroz") y se le cobraba mal al cliente.
+        emitir();
+        pendingQty = 0.5;
       }
       continue;
     }
@@ -355,7 +361,14 @@ export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] 
     // Unidades de medida: no son producto; sin cantidad previa implican 1
     // ("libra de arroz" = 1 libra, para que "y media" luego sume 1.5).
     if (PALABRAS_UNIDAD.has(token)) {
-      if (curWords.length === 0 && pendingQty == null) pendingQty = 1;
+      if (curWords.length > 0 && curQty != null) {
+        // Igual que con "media": el producto en curso ya tiene cantidad, así
+        // que esta unidad abre uno nuevo ("2 clavos libra de arroz").
+        emitir();
+        pendingQty = 1;
+      } else if (curWords.length === 0 && pendingQty == null) {
+        pendingQty = 1;
+      }
       continue;
     }
 
