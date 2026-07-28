@@ -35,6 +35,9 @@ const PALABRAS_IGNORAR = new Set([
   'me', 'da', 'dame', 'quiero', 'necesito', 'pon', 'agrega', 'vende', 'vendeme',
   'porfavor', 'por', 'favor', 'gracias', 'y', 'con', 'sin',
   'del', 'al', 'que', 'mas', 'tambien',
+  // Pronombres que aparecen cuando el reconocedor falla ("6"→"se") y que
+  // nunca son un producto: si se cuelan, ensucian la búsqueda.
+  'se', 'le', 'lo', 'te', 'me', 'es', 'esta', 'este',
 ]);
 
 // Palabras de unidad de medida: no son nombre de producto, y dichas sin
@@ -47,6 +50,23 @@ const PALABRAS_UNIDAD = new Set([
   'unidad', 'unidades', 'bolsa', 'bolsas',
   'caja', 'cajas', 'par', 'pares',
 ]);
+
+/**
+ * Unidades de CONTENIDO del envase: cuando un número va seguido de una de
+ * estas y ya se venía nombrando un producto, ese número es parte del
+ * NOMBRE, no una cantidad nueva.
+ * "tres fanta naranja 12 onzas" = 3 Fanta de 12 onzas — no 3 fantas + 12
+ * de otra cosa (ese error sumaba 15 unidades al carrito).
+ */
+const PALABRAS_CONTENIDO = new Set([
+  'onza', 'onzas', 'oz',
+  'ml', 'mililitro', 'mililitros', 'cc',
+  'gramo', 'gramos', 'gr', 'grs',
+]);
+// OJO: libra/kilo/litro NO van aquí. En una pulpería son la cantidad que
+// se está comprando ("3 libras de arroz"), no la descripción del envase.
+// Incluirlas hacía que "6 café presto 3 libras y media de arroz" se
+// tragara el arroz dentro del nombre del café.
 
 export interface SegmentoVoz {
   cantidad: number;
@@ -301,7 +321,9 @@ export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] 
     curDocena = false;
   };
 
-  for (const token of tokens) {
+  for (let idx = 0; idx < tokens.length; idx++) {
+    const token = tokens[idx];
+    const siguiente = tokens[idx + 1];
     // "media"/"medio" = fracción 0.5. Solo el SINGULAR cuenta como fracción:
     // "medias" (plural) puede ser producto (calcetines en Nicaragua).
     // Casos: "media libra de arroz" → 0.5; "libra y media" → 1+0.5 = 1.5;
@@ -339,6 +361,14 @@ export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] 
 
     const n = valorNumero(token);
     if (n !== null) {
+      // ¿Es la medida del envase dentro del nombre? ("fanta naranja 12 onzas")
+      // Solo cuando ya se venía nombrando un producto: al inicio de la frase
+      // un número siempre es cantidad ("2 libras de arroz").
+      if (curWords.length > 0 && siguiente && PALABRAS_CONTENIDO.has(siguiente)) {
+        curWords.push(token, siguiente);
+        idx++; // consumir también la unidad de contenido
+        continue;
+      }
       if (curWords.length > 0) {
         if (curQty == null) {
           // patrón "nombre cantidad" → cierra este producto con n
