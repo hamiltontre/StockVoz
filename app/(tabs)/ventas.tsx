@@ -8,6 +8,8 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -189,9 +191,11 @@ export default function PantallaVentas() {
     <SafeAreaView style={s.pantalla}>
       {/* Header */}
       <View style={s.header}>
-        <View>
+        {/* flex:1 + numberOfLines: sin esto el resumen largo empuja los
+            botones fuera de la pantalla en equipos angostos. */}
+        <View style={s.headerInfo}>
           <Text style={s.headerTitulo}>Ventas</Text>
-          <Text style={s.headerSub}>
+          <Text style={s.headerSub} numberOfLines={1}>
             Hoy: {resumenHoy.total_ventas} ventas · {centavosACordobas(resumenHoy.total_monto)}
             {resumenHoy.total_fiado > 0
               ? ` (${centavosACordobas(resumenHoy.total_fiado)} fiado)`
@@ -286,8 +290,12 @@ export default function PantallaVentas() {
             <Text style={s.vacioSub}>Presiona 🔍 para buscar, 🎤 para voz, o ve a Inventario</Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <View style={s.itemCarrito}>
+        renderItem={({ item }) => {
+          // Aviso inmediato: el vendedor ve el problema al agregar, no al
+          // cobrar con el cliente enfrente.
+          const excede = item.cantidad > item.producto.stock;
+          return (
+          <View style={[s.itemCarrito, excede && s.itemCarritoExcede]}>
             <View style={s.itemInfo}>
               <Text style={s.itemNombre}>{item.producto.nombre}</Text>
               <Text style={s.itemPrecio}>
@@ -296,6 +304,16 @@ export default function PantallaVentas() {
                   ? `  ·  docena ${centavosACordobas(item.producto.precio_docena)}`
                   : ''}
               </Text>
+              {excede && (
+                <View style={s.avisoStock}>
+                  <Ionicons name="alert-circle" size={14} color={C.rojo} />
+                  <Text style={s.avisoStockTexto}>
+                    {item.producto.stock <= 0
+                      ? 'Sin existencias'
+                      : `Solo hay ${formatearCantidadConUnidad(item.producto.stock, item.producto.unidad)} disponible`}
+                  </Text>
+                </View>
+              )}
             </View>
             <View style={s.itemControles}>
               <TouchableOpacity
@@ -321,11 +339,16 @@ export default function PantallaVentas() {
               {centavosACordobas(calcularSubtotalLinea(item.producto, item.cantidad))}
             </Text>
           </View>
-        )}
+          );
+        }}
       />
 
-      {/* Footer de cobro */}
+      {/* Footer de cobro — KeyboardAvoidingView para que el nombre del
+          fiador no quede tapado por el teclado al escribirlo. */}
       {carrito.length > 0 && (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <View style={s.footer}>
           {/* Plan básico: solo efectivo. El fiado es aparte: la venta queda
               registrada como deuda a nombre de alguien (el "cuaderno"). */}
@@ -406,6 +429,7 @@ export default function PantallaVentas() {
             )}
           </TouchableOpacity>
         </View>
+        </KeyboardAvoidingView>
       )}
 
       <ModalBuscarProducto
@@ -434,9 +458,11 @@ const s = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 12,
   },
+  headerInfo: { flex: 1, marginRight: 10 },
   headerTitulo: { fontSize: 24, fontWeight: '700', color: C.texto },
   headerSub: { fontSize: 13, color: C.subtexto, marginTop: 2 },
-  headerBotones: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  // flexShrink:0 — los botones nunca se encogen ni se salen de la pantalla
+  headerBotones: { flexDirection: 'row', gap: 10, alignItems: 'center', flexShrink: 0 },
   botonBuscar: {
     width: 46,
     height: 46,
@@ -506,6 +532,9 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.borde,
   },
+  itemCarritoExcede: { borderColor: C.rojo, borderWidth: 1.5, backgroundColor: C.rojoClaro },
+  avisoStock: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  avisoStockTexto: { fontSize: 12, color: C.rojo, fontWeight: '700' },
   itemInfo: { marginBottom: 8 },
   itemNombre: { fontSize: 15, fontWeight: '600', color: C.texto },
   itemPrecio: { fontSize: 13, color: C.subtexto, marginTop: 2 },

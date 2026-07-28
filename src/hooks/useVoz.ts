@@ -54,6 +54,23 @@ const OPCIONES_VOZ = {
   EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 4000,
 };
 
+/**
+ * Silenciador del pitido del reconocedor (módulo nativo propio, ver
+ * android/.../SilenciadorAudioModule.java). Android suena un beep al abrir
+ * y cerrar el micrófono; con la escucha continua sonaría cada dos segundos.
+ * Si el módulo no está (Expo Go), simplemente no se silencia nada.
+ */
+const Silenciador = NativeModules.SilenciadorAudio as
+  | { silenciar: () => void; restaurar: () => void }
+  | undefined;
+
+function silenciarPitido(silenciar: boolean) {
+  try {
+    if (silenciar) Silenciador?.silenciar();
+    else Silenciador?.restaurar();
+  } catch { /* nunca romper la venta por el sonido */ }
+}
+
 // RCTVoice es null en Expo Go (no hay native build).
 // Verificamos ANTES de hacer require para evitar que el constructor
 // del módulo haga llamadas async a un bridge nulo.
@@ -247,6 +264,7 @@ export function useVoz() {
     if (procesadoRef.current) return;
     procesadoRef.current = true;
     escuchandoRef.current = false;
+    silenciarPitido(false); // devolver el sonido del teléfono
     limpiarTimers();
     const texto = (acumuladoRef.current + ' ' + parcialRef.current).trim();
     acumuladoRef.current = '';
@@ -349,6 +367,7 @@ export function useVoz() {
       return;
     }
     escuchandoRef.current = false;
+    silenciarPitido(false);
     limpiarTimers();
     setErrorMensaje(e.error?.message ?? 'Error de reconocimiento');
     setEstado('error');
@@ -366,6 +385,8 @@ export function useVoz() {
 
     return () => {
       limpiarTimers();
+      escuchandoRef.current = false;
+      silenciarPitido(false); // salir de Ventas nunca debe dejar el teléfono mudo
       Voice.destroy()
         .then(() => Voice.removeAllListeners())
         .catch(() => {});
@@ -415,6 +436,8 @@ export function useVoz() {
       escuchandoRef.current = true;
       setEstado('escuchando');
       setSegundos(0);
+      // Silenciar ANTES de abrir el micrófono: si no, suena el primer beep
+      silenciarPitido(true);
       await Voice.start(LOCALE_ES, OPCIONES_VOZ);
 
       cronometroRef.current = setInterval(() => setSegundos((s) => s + 1), 1000);
@@ -422,6 +445,7 @@ export function useVoz() {
       limiteRef.current = setTimeout(() => { detenerEscucha(); }, MAX_ESCUCHA_MS);
     } catch (e) {
       escuchandoRef.current = false;
+      silenciarPitido(false);
       limpiarTimers();
       setErrorMensaje(String(e));
       setEstado('error');
