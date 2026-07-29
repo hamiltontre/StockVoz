@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import { ProductoRepository } from '../database/repositories/ProductoRepository';
 import { VozLogRepository } from '../database/repositories/VozLogRepository';
 import {
@@ -6,10 +7,6 @@ import {
   seleccionarPorNombre,
   seleccionarPorParecido,
 } from '../utils/vozParser';
-import { asegurarPermisoMicrofono } from '../voz/motorGoogle';
-import { seleccionarMotor, MOTORES } from '../voz/seleccionarMotor';
-import type { EventosMotor, MotorVoz } from '../voz/motor';
-import { conexionConocida } from './useConectividad';
 import type { Producto } from '../types';
 
 // Re-export para compatibilidad: el parser vive en utils/vozParser (módulo
@@ -36,13 +33,87 @@ export interface ResultadoVoz {
   items: ItemVoz[];
 }
 
+// 'es-419' (código regional Latinoamérica de la ONU) no es reconocido de
+// forma confiable por el backend de reconocimiento de voz de Google en
+// algunos dispositivos/OEMs — devuelve resultados vacíos aunque detecte
+// audio. 'es-US' tiene mejor soporte real y funciona bien con acento
+// latinoamericano/nicaragüense.
+const LOCALE_ES = 'es-US';
+
+// Opciones del reconocedor: tolerar pausas largas (4s) para que el vendedor
+// pueda dictar su lista con calma sin que se corte la sesión, y resultados
+// parciales como respaldo. OJO: el servicio de Google en Android moderno
+// suele IGNORAR los extras de silencio (cierra a ~1-2s de pausa igual);
+// por eso los parciales se acumulan en parcialRef y se rescatan si el
+// resultado final llega vacío o la sesión muere con error 6/7. NO se
+// re-arma el reconocedor (eso causaba ANR/crashes).
+const OPCIONES_VOZ = {
+  EXTRA_LANGUAGE_MODEL: 'LANGUAGE_MODEL_FREE_FORM',
+  EXTRA_PARTIAL_RESULTS: true,
+  EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 4000,
+  EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 4000,
+  EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 4000,
+};
+
 /**
- * Este hook ya NO conoce ninguna librería de voz: pide un motor a
- * `seleccionarMotor()` y trabaja contra la interfaz `MotorVoz`. Todo lo
- * específico de cada reconocedor (idioma, pitido, códigos de error) vive
- * dentro de su motor. Así se puede cambiar de reconocedor sin tocar la
- * pantalla de ventas, que es lo que nos costó caro con @react-native-voice.
+ * Silenciador del pitido del reconocedor (módulo nativo propio, ver
+ * android/.../SilenciadorAudioModule.java). Android suena un beep al abrir
+ * y cerrar el micrófono; con la escucha continua sonaría cada dos segundos.
+ * Si el módulo no está (Expo Go), simplemente no se silencia nada.
  */
+const Silenciador = NativeModules.SilenciadorAudio as
+  | { silenciar: () => void; restaurar: () => void }
+  | undefined;
+
+function silenciarPitido(silenciar: boolean) {
+  try {
+    if (silenciar) Silenciador?.silenciar();
+    else Silenciador?.restaurar();
+  } catch { /* nunca romper la venta por el sonido */ }
+}
+
+// RCTVoice es null en Expo Go (no hay native build).
+// Verificamos ANTES de hacer require para evitar que el constructor
+// del módulo haga llamadas async a un bridge nulo.
+const VOICE_NATIVO_DISPONIBLE = !!NativeModules.RCTVoice;
+
+function getVoice() {
+  if (!VOICE_NATIVO_DISPONIBLE) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('@react-native-voice/voice').default;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pide el permiso de micrófono en Android. @react-native-voice NO lo solicita
+ * solo al llamar start(), así que sin esto la voz falla silenciosamente en
+ * dispositivos donde el usuario aún no lo concedió.
+ * Devuelve true si el permiso quedó concedido.
+ */
+async function asegurarPermisoMicrofono(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  try {
+    const yaConcedido = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+    );
+    if (yaConcedido) return true;
+    const resultado = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      {
+        title: 'Permiso de micrófono',
+        message: 'StockVoz necesita el micrófono para registrar ventas por voz.',
+        buttonPositive: 'Permitir',
+        buttonNegative: 'Cancelar',
+      }
+    );
+    return resultado === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Estrategia de búsqueda en capas (de más específica a más flexible):
@@ -135,15 +206,8 @@ export function useVoz() {
   const [resultado, setResultado] = useState<ResultadoVoz | null>(null);
   const [errorMensaje, setErrorMensaje] = useState<string | null>(null);
   const [segundos, setSegundos] = useState(0); // tiempo escuchando (informativo)
-  // Qué motor está atendiendo la venta actual, para diagnóstico y para
-  // saber si hay que re-armar el micrófono.
-  const [motorActivo, setMotorActivo] = useState<string | null>(null);
-  const disponible = useRef(seleccionarMotor(true) !== null);
+  const disponible = useRef(VOICE_NATIVO_DISPONIBLE);
 
-  const motorRef = useRef<MotorVoz | null>(null);
-  // Catálogo cargado al abrir el micrófono: sirve para el vocabulario del
-  // motor offline y se reutiliza al procesar, evitando releer el inventario.
-  const catalogoRef = useRef<Producto[] | null>(null);
   const escuchandoRef = useRef(false);
   const cronometroRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const limiteRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -179,14 +243,9 @@ export function useVoz() {
     setEstado('procesando');
     try {
       const segmentos = parsearMultiplesProductos(texto);
-      // Catálogo una sola vez para toda la lista dictada, no por producto.
-      // Al abrir el micrófono ya se cargó (lo necesita el vocabulario del
-      // motor offline), así que normalmente no se vuelve a leer la base.
-      let catalogo = catalogoRef.current;
-      if (!catalogo) {
-        const catR = await ProductoRepository.obtenerTodos();
-        catalogo = catR.ok ? catR.data : [];
-      }
+      // Catálogo una sola vez para toda la lista dictada, no por producto
+      const catR = await ProductoRepository.obtenerTodos();
+      const catalogo = catR.ok ? catR.data : [];
       const items: ItemVoz[] = [];
       for (const seg of segmentos) {
         const productosEncontrados = await buscarProductosInteligente(seg.palabras, catalogo);
@@ -213,8 +272,7 @@ export function useVoz() {
           cantidad: i.cantidad,
           palabras: i.palabras,
           encontrado: i.productosEncontrados.length > 0,
-        })),
-        motorRef.current?.nombre ?? null
+        }))
       );
       setEstado('inactivo');
     } catch {
@@ -239,8 +297,7 @@ export function useVoz() {
     if (procesadoRef.current) return;
     procesadoRef.current = true;
     escuchandoRef.current = false;
-    // detener() devuelve el sonido del teléfono y cierra el micrófono.
-    motorRef.current?.detener().catch(() => { /* noop */ });
+    silenciarPitido(false); // devolver el sonido del teléfono
     limpiarTimers();
     const texto = (acumuladoRef.current + ' ' + parcialRef.current).trim();
     acumuladoRef.current = '';
@@ -249,33 +306,18 @@ export function useVoz() {
   }, [procesar, limpiarTimers]);
 
   /**
-   * Puente estable entre el motor y los manejadores.
-   *
-   * El motor recibe este objeto UNA sola vez al iniciar, pero los
-   * manejadores se recrean en cada render. Si se le pasaran directamente,
-   * el motor seguiría llamando a los de la primera vez y la venta se
-   * procesaría con datos viejos.
-   */
-  const manejadoresRef = useRef<EventosMotor | null>(null);
-  const eventos = useRef<EventosMotor>({
-    onParcial: (t) => manejadoresRef.current?.onParcial(t),
-    onFinal: (t) => manejadoresRef.current?.onFinal(t),
-    onFinTramo: () => manejadoresRef.current?.onFinTramo(),
-    onError: (m, r) => manejadoresRef.current?.onError(m, r),
-  }).current;
-
-  /**
    * Vuelve a abrir el micrófono para seguir escuchando al vendedor.
    *
-   * Solo hace falta con motores que cierran por silencio (Google corta a
-   * ~1-2s e IGNORA los extras de duración que le pedimos). El re-arme está
-   * ACOTADO a propósito: guarda de reentrada + espera entre intentos +
-   * tope de re-armes. Un bucle de start() sin freno satura el hilo
-   * principal y Android mata la app por ANR (ya nos pasó).
+   * Google corta la sesión a ~1-2s de silencio e IGNORA los extras de
+   * duración que le pedimos, así que la única forma de dejar pensar al
+   * vendedor es re-armar el reconocedor. El re-arme está ACOTADO a
+   * propósito: guarda de reentrada + espera entre intentos + tope de
+   * re-armes. Un bucle de start() sin freno satura el hilo principal y
+   * Android mata la app por ANR (ya nos pasó).
    */
   const rearmar = useCallback(() => {
-    const motor = motorRef.current;
-    if (!motor || !escuchandoRef.current || reiniciandoRef.current) return;
+    const Voice = getVoice();
+    if (!Voice || !escuchandoRef.current || reiniciandoRef.current) return;
     if (rearmesRef.current >= MAX_REARMES) {
       logVoz('tope de re-armes alcanzado → finalizando');
       finalizar();
@@ -287,67 +329,67 @@ export function useVoz() {
       reiniciandoRef.current = false;
       if (!escuchandoRef.current) return;
       try {
-        await motor.iniciar(eventos);
+        await Voice.start(LOCALE_ES, OPCIONES_VOZ);
         logVoz('re-armado #' + rearmesRef.current);
       } catch {
         // Si no se pudo reabrir, cerramos con lo que ya se entendió
         finalizar();
       }
     }, PAUSA_REARME_MS);
-  }, [finalizar, eventos]);
+  }, [finalizar]);
 
-  /** Sigue escuchando si el vendedor no ha apagado el micrófono. */
-  const continuar = useCallback(() => {
-    if (!escuchandoRef.current) { finalizar(); return; }
-    // Un motor que no se corta por silencio (Vosk) sigue escuchando solo;
-    // re-armarlo lo reiniciaría a media venta y perdería audio.
-    if (motorRef.current?.cierraPorSilencio) rearmar();
-  }, [rearmar, finalizar]);
-
-  // Parciales: texto en vivo mientras el vendedor habla.
-  const onParcial = useCallback((texto: string) => {
+  // Parciales: Google los emite en vivo mientras el vendedor habla.
+  const handleParciales = useCallback((e: { value?: string[] }) => {
+    const texto = e.value?.find((v) => v && v.trim().length > 0)?.trim() ?? '';
     if (texto && texto !== parcialRef.current) {
       parcialRef.current = texto;
       logVoz('parcial →', JSON.stringify(texto));
     }
   }, []);
 
-  // Tramo terminado (una frase, no la sesión completa).
-  const onFinal = useCallback((texto: string) => {
-    logVoz('final =', JSON.stringify(texto));
-    if (procesadoRef.current) return;
-    if (graciaRef.current) { clearTimeout(graciaRef.current); graciaRef.current = null; }
-    // Algunos equipos devuelven el final vacío aunque hayan transcrito: el
-    // parcial es entonces la fuente real de lo dicho.
-    capturarSegmento(texto || parcialRef.current);
-    continuar();
-  }, [capturarSegmento, continuar]);
-
-  // El motor cerró el micrófono. El timer de gracia cubre el caso en que
-  // cierre sin emitir resultado ni error (la UI quedaba pegada en
-  // "escuchando" hasta el tope de seguridad).
-  const onFinTramo = useCallback(() => {
-    logVoz('fin de tramo (escuchando=' + escuchandoRef.current + ')');
+  // Fin de un segmento por silencio. Si el vendedor sigue con el micrófono
+  // encendido, reabrimos; el timer de gracia cubre el caso en que el nativo
+  // cierre sin emitir resultado ni error.
+  const handleFinDeVoz = useCallback(() => {
+    logVoz('onSpeechEnd (escuchando=' + escuchandoRef.current + ')');
     if (procesadoRef.current) return;
     if (graciaRef.current) clearTimeout(graciaRef.current);
     graciaRef.current = setTimeout(() => {
       graciaRef.current = null;
       if (procesadoRef.current) return;
       capturarSegmento(parcialRef.current);
-      continuar();
+      if (escuchandoRef.current) rearmar();
+      else finalizar();
     }, GRACIA_MS);
-  }, [capturarSegmento, continuar]);
+  }, [capturarSegmento, rearmar, finalizar]);
 
-  const onError = useCallback((mensaje: string, recuperable: boolean) => {
-    logVoz('error=' + mensaje + ' recuperable=' + recuperable + ' escuchando=' + escuchandoRef.current);
+  // Resultado de un segmento (no de la sesión completa).
+  const handleResultados = useCallback((e: { value?: string[] }) => {
+    logVoz('onSpeechResults =', JSON.stringify(e.value));
+    if (procesadoRef.current) return;
+    if (graciaRef.current) { clearTimeout(graciaRef.current); graciaRef.current = null; }
+    const final = e.value?.find((v) => v && v.trim().length > 0)?.trim() ?? '';
+    // Este OEM devuelve el final vacío aunque haya transcrito: el parcial
+    // es la fuente real de lo dicho.
+    capturarSegmento(final || parcialRef.current);
+    if (escuchandoRef.current) rearmar();
+    else finalizar();
+  }, [capturarSegmento, rearmar, finalizar]);
+
+  const handleError = useCallback((e: { error?: { message?: string; code?: string } }) => {
+    const code = String(e.error?.code ?? '');
+    logVoz('onSpeechError code=' + code + ' escuchando=' + escuchandoRef.current);
     if (procesadoRef.current) return;
     if (graciaRef.current) { clearTimeout(graciaRef.current); graciaRef.current = null; }
 
-    // Recuperable = fue el silencio de alguien pensando, no una falla. Se
-    // rescata lo que haya y se sigue escuchando.
-    if (recuperable) {
+    // 5=client, 6=speech timeout, 7=no match, 8=busy: no son errores reales,
+    // son el silencio de alguien que está pensando. Se rescata lo que haya
+    // y se sigue escuchando.
+    const esSilencio = code === '5' || code === '6' || code === '7' || code === '8' || code === 'no-speech';
+    if (esSilencio) {
       capturarSegmento(parcialRef.current);
-      continuar();
+      if (escuchandoRef.current) rearmar();
+      else finalizar();
       return;
     }
 
@@ -358,32 +400,31 @@ export function useVoz() {
       return;
     }
     escuchandoRef.current = false;
-    motorRef.current?.detener().catch(() => { /* noop */ });
+    silenciarPitido(false);
     limpiarTimers();
-    setErrorMensaje(mensaje || 'Error de reconocimiento');
+    setErrorMensaje(e.error?.message ?? 'Error de reconocimiento');
     setEstado('error');
     setTimeout(() => setEstado('inactivo'), 3000);
-  }, [capturarSegmento, continuar, finalizar, limpiarTimers]);
-
-  // Mantener el puente apuntando a los manejadores de este render.
-  manejadoresRef.current = { onParcial, onFinal, onFinTramo, onError };
+  }, [capturarSegmento, rearmar, finalizar, limpiarTimers]);
 
   useEffect(() => {
-    // Adelantar el trabajo pesado del motor offline mientras el vendedor
-    // todavía está mirando la pantalla, no cuando toque el micrófono. Si
-    // falla no importa: se reintenta al iniciar la escucha.
-    for (const m of MOTORES) {
-      if (m.estaDisponible()) m.precargar?.().catch(() => { /* noop */ });
-    }
+    const Voice = getVoice();
+    if (!Voice) return;
+
+    Voice.onSpeechResults = handleResultados;
+    Voice.onSpeechPartialResults = handleParciales;
+    Voice.onSpeechEnd = handleFinDeVoz;
+    Voice.onSpeechError = handleError;
 
     return () => {
       limpiarTimers();
       escuchandoRef.current = false;
-      // Salir de Ventas nunca debe dejar el teléfono mudo ni el modelo de
-      // voz ocupando memoria.
-      for (const m of MOTORES) m.liberar().catch(() => { /* noop */ });
+      silenciarPitido(false); // salir de Ventas nunca debe dejar el teléfono mudo
+      Voice.destroy()
+        .then(() => Voice.removeAllListeners())
+        .catch(() => {});
     };
-  }, [limpiarTimers]);
+  }, [handleResultados, handleParciales, handleFinDeVoz, handleError, limpiarTimers]);
 
   // El vendedor apaga el micrófono: se cierra el segmento en curso y se
   // procesa TODO lo acumulado en la sesión.
@@ -393,9 +434,9 @@ export function useVoz() {
     if (limiteRef.current) { clearTimeout(limiteRef.current); limiteRef.current = null; }
     if (cronometroRef.current) { clearInterval(cronometroRef.current); cronometroRef.current = null; }
     setEstado('procesando');
-    const motor = motorRef.current;
-    if (!motor) { finalizar(); return; }
-    try { await motor.detener(); } catch { /* noop */ }
+    const Voice = getVoice();
+    if (!Voice) { finalizar(); return; }
+    try { await Voice.stop(); } catch { /* noop */ }
     // Darle un momento al nativo para emitir el último resultado; si no
     // llega, se cierra igual con lo acumulado.
     if (graciaRef.current) clearTimeout(graciaRef.current);
@@ -403,16 +444,13 @@ export function useVoz() {
   }, [finalizar]);
 
   const iniciarEscucha = useCallback(async () => {
-    // Sin conexión conocida todavía se asume que sí hay: es el
-    // comportamiento de siempre, así nunca se degrada por no saber.
-    const eleccion = seleccionarMotor(conexionConocida() ?? true);
-    if (!eleccion) {
+    const Voice = getVoice();
+    if (!Voice) {
       setErrorMensaje('Voz no disponible. Se necesita development build.');
       setEstado('error');
       setTimeout(() => setEstado('inactivo'), 4000);
       return;
     }
-    const { motor, razon } = eleccion;
     const permiso = await asegurarPermisoMicrofono();
     if (!permiso) {
       setErrorMensaje('Activa el permiso de micrófono para usar la voz');
@@ -429,39 +467,24 @@ export function useVoz() {
       reiniciandoRef.current = false;
       rearmesRef.current = 0;
       escuchandoRef.current = true;
-      motorRef.current = motor;
-      setMotorActivo(motor.nombre);
       setEstado('escuchando');
       setSegundos(0);
-
-      // El catálogo se lee ANTES de abrir el micrófono: un motor de
-      // vocabulario cerrado necesita saber qué productos existen para
-      // reconocer "Arroz Faisán" o "Xedex". Se reutiliza al procesar.
-      const catR = await ProductoRepository.obtenerTodos();
-      catalogoRef.current = catR.ok ? catR.data : [];
-      if (motor.prepararVocabulario) {
-        const clavesR = await ProductoRepository.obtenerPalabrasClaveTodas();
-        await motor.prepararVocabulario(
-          catalogoRef.current,
-          clavesR.ok ? clavesR.data : []
-        );
-      }
-
-      logVoz('motor=' + motor.nombre + ' (' + razon + ')');
-      await motor.iniciar(eventos);
+      // Silenciar ANTES de abrir el micrófono: si no, suena el primer beep
+      silenciarPitido(true);
+      await Voice.start(LOCALE_ES, OPCIONES_VOZ);
 
       cronometroRef.current = setInterval(() => setSegundos((s) => s + 1), 1000);
       // Tope de seguridad: detener si se pasa el máximo.
       limiteRef.current = setTimeout(() => { detenerEscucha(); }, MAX_ESCUCHA_MS);
     } catch (e) {
       escuchandoRef.current = false;
-      motor.detener().catch(() => { /* noop */ });
+      silenciarPitido(false);
       limpiarTimers();
       setErrorMensaje(String(e));
       setEstado('error');
       setTimeout(() => setEstado('inactivo'), 3000);
     }
-  }, [limpiarTimers, detenerEscucha, eventos]);
+  }, [limpiarTimers, detenerEscucha]);
 
   const limpiar = useCallback(() => {
     setResultado(null);
@@ -475,8 +498,6 @@ export function useVoz() {
     resultado,
     errorMensaje,
     segundos,
-    /** Motor que atendió la última escucha ("google" | "vosk"). */
-    motorActivo,
     disponible: disponible.current,
     iniciarEscucha,
     detenerEscucha,

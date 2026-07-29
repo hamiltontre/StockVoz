@@ -264,17 +264,6 @@ const MIGRACIONES: Array<{ version: number; sentencias: string[] }> = [
       `CREATE INDEX IF NOT EXISTS idx_palabras_producto ON palabras_clave(producto_id)`,
     ],
   },
-  {
-    // Migración v11 — qué motor de voz atendió cada comando.
-    // Desde ahora hay DOS reconocedores (Google con internet, Vosk sin él).
-    // Sin esta columna el diagnóstico mezcla los dos y un "94% de acierto"
-    // no dice cuál de los dos hay que mejorar. Con ella se puede comparar
-    // la precisión de cada uno con los mismos productos reales.
-    version: 11,
-    sentencias: [
-      `ALTER TABLE voz_log ADD COLUMN motor TEXT`,
-    ],
-  },
 ];
 
 /**

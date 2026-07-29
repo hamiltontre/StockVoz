@@ -50,9 +50,3 @@ yarn-error.*
 # Play Store credentials
 play-store-credentials.json
 *-credentials.json
-
-# Modelo de voz Vosk (~58 MB) — se descarga con scripts/descargar-modelo-voz.sh.
-# La descarga NO puede vivir en assets/: Expo empaqueta esa carpeta entera y
-# el modelo terminaba duplicado dentro del APK.
-.cache/
-android/app/src/main/assets/vosk-model-*/

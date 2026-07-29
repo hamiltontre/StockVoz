@@ -17,15 +17,6 @@ export interface EntradaVozLog {
   encontrados: number;
   no_encontrados: number;
   creado_en: string;
-  motor: string | null;
-}
-
-/** Precisión de un reconocedor por separado, para poder compararlos. */
-export interface PrecisionMotor {
-  motor: string;
-  comandos: number;
-  buscados: number;
-  encontrados: number;
 }
 
 export interface ResumenVoz {
@@ -47,22 +38,19 @@ const MAX_ENTRADAS = 500;
 export const VozLogRepository = {
   async registrar(
     transcripcion: string,
-    segmentos: Array<{ cantidad: number; palabras: string[]; encontrado: boolean }>,
-    /** Reconocedor que produjo la transcripción ("google" | "vosk"). */
-    motor: string | null = null
+    segmentos: Array<{ cantidad: number; palabras: string[]; encontrado: boolean }>
   ): Promise<void> {
     try {
       const db = await getDb();
       const encontrados = segmentos.filter((s) => s.encontrado).length;
       const r = await db.runAsync(
-        `INSERT INTO voz_log (transcripcion, segmentos, encontrados, no_encontrados, motor)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO voz_log (transcripcion, segmentos, encontrados, no_encontrados)
+         VALUES (?, ?, ?, ?)`,
         [
           transcripcion,
           JSON.stringify(segmentos),
           encontrados,
           segmentos.length - encontrados,
-          motor,
         ]
       );
       // Poda cada ~50 registros para no pagar el DELETE en cada venta
@@ -99,29 +87,6 @@ export const VozLogRepository = {
     }
   },
 
-  /**
-   * Precisión de cada reconocedor por separado. Es la comparación que
-   * decide si conviene dejar el motor offline como principal.
-   */
-  async precisionPorMotor(): Promise<Result<PrecisionMotor[]>> {
-    try {
-      const db = await getDb();
-      const rows = await db.getAllAsync<PrecisionMotor>(
-        `SELECT
-           COALESCE(motor, 'desconocido') AS motor,
-           COUNT(*) AS comandos,
-           COALESCE(SUM(encontrados + no_encontrados),0) AS buscados,
-           COALESCE(SUM(encontrados),0) AS encontrados
-         FROM voz_log
-         GROUP BY COALESCE(motor, 'desconocido')
-         ORDER BY comandos DESC`
-      );
-      return { ok: true, data: rows };
-    } catch (e) {
-      return { ok: false, error: String(e) };
-    }
-  },
-
   async ultimas(limite = 100): Promise<Result<EntradaVozLog[]>> {
     try {
       const db = await getDb();
@@ -147,9 +112,7 @@ export const VozLogRepository = {
 
   /** Texto compartible para analizar los fallos fuera del teléfono. */
   async generarReporte(): Promise<string> {
-    const [res, ult, porMotor] = await Promise.all([
-      this.resumen(), this.ultimas(100), this.precisionPorMotor(),
-    ]);
+    const [res, ult] = await Promise.all([this.resumen(), this.ultimas(100)]);
     const lineas: string[] = ['*DIAGNÓSTICO DE VOZ — StockVoz*', ''];
 
     if (res.ok) {
@@ -162,22 +125,11 @@ export const VozLogRepository = {
       lineas.push('');
     }
 
-    // Solo tiene sentido comparar si de verdad se usaron varios motores.
-    if (porMotor.ok && porMotor.data.length > 1) {
-      lineas.push('*POR MOTOR*');
-      for (const m of porMotor.data) {
-        const pct = m.buscados > 0 ? Math.round((m.encontrados / m.buscados) * 100) : 0;
-        lineas.push(`${m.motor}: ${m.encontrados}/${m.buscados} (${pct}%) en ${m.comandos} comandos`);
-      }
-      lineas.push('');
-    }
-
     if (ult.ok && ult.data.length > 0) {
       lineas.push('*DETALLE (más reciente primero)*');
       for (const e of ult.data) {
         const marca = e.no_encontrados === 0 ? 'OK  ' : 'FALLA';
-        const quien = e.motor ? ` [${e.motor}]` : '';
-        lineas.push(`${marca}${quien} «${e.transcripcion}»`);
+        lineas.push(`${marca} «${e.transcripcion}»`);
         try {
           const segs = JSON.parse(e.segmentos) as Array<{
             cantidad: number; palabras: string[]; encontrado: boolean;

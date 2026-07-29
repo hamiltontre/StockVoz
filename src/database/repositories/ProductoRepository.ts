@@ -309,28 +309,6 @@ export const ProductoRepository = {
     }
   },
 
-  /**
-   * TODAS las palabras enseñadas a la voz, de todos los productos.
-   *
-   * La necesita el motor offline: reconoce ÚNICAMENTE lo que esté en su
-   * vocabulario, así que si no se le pasan estas palabras, todo lo que el
-   * dueño le enseñó ("chiltoma" para el chile dulce, la marca con la que
-   * el barrio pide el producto) dejaría de funcionar sin internet.
-   */
-  async obtenerPalabrasClaveTodas(): Promise<Result<string[]>> {
-    try {
-      const db = await getDb();
-      const rows = await db.getAllAsync<{ palabra: string }>(
-        `SELECT DISTINCT pc.palabra FROM palabras_clave pc
-         INNER JOIN productos p ON p.id = pc.producto_id
-         WHERE p.activo = 1`
-      );
-      return { ok: true, data: rows.map((r) => r.palabra) };
-    } catch (e) {
-      return { ok: false, error: String(e) };
-    }
-  },
-
   // ─── Búsquedas avanzadas para el motor de voz ────────────────────────────
 
   /** Coincidencia exacta de palabra clave (ya viene normalizada del hook) */

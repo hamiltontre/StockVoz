@@ -53,30 +53,11 @@ async function hayInternet(): Promise<boolean> {
   }
 }
 
-/**
- * Último resultado conocido, compartido por toda la app.
- *
- * POR QUÉ: comprobar internet cuesta hasta 3 s. La voz necesita decidir
- * QUÉ MOTOR usar en el instante en que el vendedor toca el micrófono; no
- * puede quedarse esperando un ping. Se usa el último valor conocido —que
- * el hook refresca cada 30 s y al volver del segundo plano— y si todavía
- * no hay ninguno se asume que sí hay conexión (el motor online era el
- * comportamiento anterior, así nunca se degrada por no saber).
- */
-let ultimaConexion: boolean | null = null;
-
-/** Estado de conexión sin esperar: null = aún no se ha comprobado. */
-export function conexionConocida(): boolean | null {
-  return ultimaConexion;
-}
-
 export function useConectividad() {
-  const [conectado, setConectado] = useState<boolean | null>(ultimaConexion);
+  const [conectado, setConectado] = useState<boolean | null>(null);
 
   const verificar = async () => {
-    const ok = await hayInternet();
-    ultimaConexion = ok;
-    setConectado(ok);
+    setConectado(await hayInternet());
   };
 
   useEffect(() => {
