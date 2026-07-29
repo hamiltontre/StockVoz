@@ -6,6 +6,7 @@ import {
   parsearMultiplesProductos,
   seleccionarPorNombre,
   seleccionarPorParecido,
+  elegirMejorHipotesis,
 } from '../utils/vozParser';
 import type { Producto } from '../types';
 
@@ -50,6 +51,12 @@ const LOCALE_ES = 'es-US';
 const OPCIONES_VOZ = {
   EXTRA_LANGUAGE_MODEL: 'LANGUAGE_MODEL_FREE_FORM',
   EXTRA_PARTIAL_RESULTS: true,
+  // Pedir VARIAS transcripciones, no solo la que el reconocedor cree mejor:
+  // su confianza mide español general, no este negocio. Entre las
+  // alternativas se elige la que más productos del inventario reconoce
+  // (ver elegirMejorHipotesis). Cuesta nada y a veces trae la correcta de
+  // segunda o tercera.
+  EXTRA_MAX_RESULTS: 5,
   EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 4000,
   EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 4000,
   EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 4000,
@@ -228,6 +235,10 @@ export function useVoz() {
   const acumuladoRef = useRef('');
   const reiniciandoRef = useRef(false);
   const rearmesRef = useRef(0);
+  // Inventario cargado al abrir el micrófono. Sirve para decidir EN CALIENTE
+  // cuál de las transcripciones que propone el reconocedor conviene quedarse,
+  // y se reutiliza al procesar para no releer la base.
+  const catalogoRef = useRef<Producto[]>([]);
 
   const limpiarTimers = useCallback(() => {
     if (cronometroRef.current) { clearInterval(cronometroRef.current); cronometroRef.current = null; }
@@ -243,9 +254,13 @@ export function useVoz() {
     setEstado('procesando');
     try {
       const segmentos = parsearMultiplesProductos(texto);
-      // Catálogo una sola vez para toda la lista dictada, no por producto
-      const catR = await ProductoRepository.obtenerTodos();
-      const catalogo = catR.ok ? catR.data : [];
+      // Catálogo una sola vez para toda la lista dictada, no por producto.
+      // Ya se cargó al abrir el micrófono; solo se relee si aquello falló.
+      let catalogo = catalogoRef.current;
+      if (catalogo.length === 0) {
+        const catR = await ProductoRepository.obtenerTodos();
+        catalogo = catR.ok ? catR.data : [];
+      }
       const items: ItemVoz[] = [];
       for (const seg of segmentos) {
         const productosEncontrados = await buscarProductosInteligente(seg.palabras, catalogo);
@@ -368,7 +383,10 @@ export function useVoz() {
     logVoz('onSpeechResults =', JSON.stringify(e.value));
     if (procesadoRef.current) return;
     if (graciaRef.current) { clearTimeout(graciaRef.current); graciaRef.current = null; }
-    const final = e.value?.find((v) => v && v.trim().length > 0)?.trim() ?? '';
+    // El reconocedor propone varias transcripciones ordenadas por SU
+    // confianza; nos quedamos con la que más productos del negocio
+    // reconoce, que no siempre es la primera.
+    const final = elegirMejorHipotesis(e.value ?? [], catalogoRef.current);
     // Este OEM devuelve el final vacío aunque haya transcrito: el parcial
     // es la fuente real de lo dicho.
     capturarSegmento(final || parcialRef.current);
@@ -458,6 +476,15 @@ export function useVoz() {
       setTimeout(() => setEstado('inactivo'), 4000);
       return;
     }
+    // El inventario se carga ANTES de abrir el micrófono porque hace falta
+    // mientras el vendedor habla: es con lo que se decide cuál de las
+    // transcripciones propuestas conviene quedarse. Si falla, la voz sigue
+    // funcionando (se toma la primera propuesta, como antes).
+    try {
+      const catR = await ProductoRepository.obtenerTodos();
+      catalogoRef.current = catR.ok ? catR.data : [];
+    } catch { catalogoRef.current = []; }
+
     try {
       setResultado(null);
       setErrorMensaje(null);

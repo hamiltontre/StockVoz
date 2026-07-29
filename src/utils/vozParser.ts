@@ -89,6 +89,58 @@ export function palabraCoincide(dicha: string, delNombre: string): boolean {
   return larga.startsWith(corta) && larga.length - corta.length <= 2;
 }
 
+/**
+ * Clave FONÉTICA: cómo suena una palabra, no cómo se escribe.
+ *
+ * POR QUÉ EXISTE: el reconocedor casi nunca se equivoca de sonido — se
+ * equivoca de ortografía. Oye bien "Xedex" y escribe "sedex"; oye "Eskimo"
+ * y escribe "esquimo". Comparando letra por letra son palabras distintas;
+ * comparando sonidos son la misma. Y en español latinoamericano las
+ * confusiones son SISTEMÁTICAS, no azarosas:
+ *
+ *   seseo    s = z = c(e,i)     "sedex" = "cedex"
+ *   yeísmo   ll = y             "yogurt" = "llogurt"
+ *   b = v                       "suavitel" = "suabitel"
+ *   h muda                      "hilo" = "ilo"
+ *   k = qu = c(a,o,u)           "chiky" = "chiqui"
+ *   g(e,i) = j                  "gel" = "jel"
+ *
+ * Se aplica igual a lo dicho y al nombre del producto, así que lo que
+ * importa es que la regla sea CONSISTENTE, no que sea fonética perfecta.
+ */
+export function claveFonetica(palabra: string): string {
+  let p = normalizarTexto(palabra).replace(/\s+/g, '');
+  if (!p) return '';
+  // La x inicial suena /s/ ("Xedex" se pide /sedeks/); en medio suena /ks/
+  // ("taxi" → "taksi"). Distinguirlas hace que ambas grafías converjan.
+  p = p.replace(/^x/, 's').replace(/x/g, 'ks');
+  p = p
+    .replace(/ch/g, 'C')          // se protege: no es c + h
+    .replace(/qu([ei])/g, 'k$1')
+    .replace(/c([ei])/g, 's$1')   // seseo
+    .replace(/c/g, 'k')
+    .replace(/z/g, 's')           // seseo
+    .replace(/gu([ei])/g, 'g$1')  // "guitarra" suena con g dura
+    .replace(/g([ei])/g, 'j$1')
+    .replace(/ll/g, 'y')          // yeísmo
+    // La y final suena /i/ ("rey", "Chiky"), así que converge con la
+    // grafía en i que el reconocedor suele escribir ("chiqui").
+    .replace(/y$/, 'i')
+    .replace(/v/g, 'b')
+    .replace(/w/g, 'b')
+    .replace(/h/g, '')            // muda
+    .replace(/ñ/g, 'n')
+    .replace(/C/g, 'ch');
+  // Letras repetidas no cambian el sonido en español ("carro" ya pasó por rr)
+  return p.replace(/(.)\1+/g, '$1');
+}
+
+/** ¿Dos palabras SUENAN igual, aunque se escriban distinto? */
+export function suenanIgual(a: string, b: string): boolean {
+  const ca = claveFonetica(a);
+  return ca.length > 0 && ca === claveFonetica(b);
+}
+
 /** Núcleo del nombre: normalizado y sin artículos/preposiciones.
  *  "Pierna de pollo" → "pierna pollo" (comparable con lo dicho). */
 function nucleoNombre(nombre: string): string {
@@ -137,12 +189,28 @@ function toleranciaTipografica(largo: number): number {
   return 2;
 }
 
+/**
+ * Distancia que cuenta para decidir: la menor entre comparar LETRAS y
+ * comparar SONIDOS. "esquimo"/"eskimo" son 2 letras de diferencia pero 0
+ * de sonido, y lo segundo describe mejor el error del reconocedor.
+ */
+export function distanciaEfectiva(a: string, b: string): number {
+  const porLetras = distanciaEdicion(a, b);
+  if (porLetras === 0) return 0;
+  return Math.min(porLetras, distanciaEdicion(claveFonetica(a), claveFonetica(b)));
+}
+
 /** ¿Dos palabras son "la misma" pese a un error de transcripción? */
 export function palabraSimilar(dicha: string, delNombre: string): boolean {
   if (palabraCoincide(dicha, delNombre)) return true;
+  // Sonar exactamente igual es señal MÁS fuerte que parecerse de letras:
+  // vale incluso en palabras cortas, donde no se tolera ningún error
+  // tipográfico (pan/sal/sol no deben volverse intercambiables, pero
+  // "sal" y "zal" sí son la misma palabra).
+  if (suenanIgual(dicha, delNombre)) return true;
   const tolerancia = toleranciaTipografica(Math.max(dicha.length, delNombre.length));
   if (tolerancia === 0) return false;
-  return distanciaEdicion(dicha, delNombre) <= tolerancia;
+  return distanciaEfectiva(dicha, delNombre) <= tolerancia;
 }
 
 /**
@@ -202,7 +270,7 @@ export function ordenarPorParecido<T extends { nombre: string }>(
     for (const dicha of palabras) {
       let mejor = Infinity;
       for (const t of tokens) {
-        const d = distanciaEdicion(dicha, t);
+        const d = distanciaEfectiva(dicha, t);
         // El prefijo compartido descuenta a la MITAD, no a un valor fijo:
         // así "pantalones" queda más cerca de "pantalón" (casi igual) que
         // de "pan" (prefijo corto). Con un bonus plano ganaba "Pan simple".
@@ -248,7 +316,7 @@ export function seleccionarPorParecido<T extends { nombre: string }>(
         let mejor = Infinity;
         for (const t of tokens) {
           if (palabraSimilar(dicha, t)) {
-            mejor = Math.min(mejor, distanciaEdicion(dicha, t));
+            mejor = Math.min(mejor, distanciaEfectiva(dicha, t));
           }
         }
         if (mejor !== Infinity) { aciertos++; distanciaTotal += mejor; }
@@ -330,6 +398,40 @@ export function normalizarFracciones(texto: string): string {
     )
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Elige, entre las varias transcripciones que propone el reconocedor, la que
+ * más productos del inventario reconoce.
+ *
+ * POR QUÉ: el reconocedor no devuelve UNA transcripción sino varias, ordenadas
+ * por su propia confianza — y esa confianza mide español general, no el
+ * negocio. Para "Arroz Faisán" puede proponer ["ropa y sam", "arroz faisán"]:
+ * la correcta viene de segunda y la estábamos descartando. Acá gana la que
+ * más productos REALES encuentra, que es lo único que importa en una venta.
+ *
+ * Ante empate gana la primera, o sea el orden del reconocedor.
+ */
+export function elegirMejorHipotesis<T extends { nombre: string }>(
+  alternativas: string[],
+  productos: T[]
+): string {
+  const utiles = alternativas.map((a) => a?.trim()).filter((a): a is string => !!a);
+  if (utiles.length === 0) return '';
+  if (utiles.length === 1 || productos.length === 0) return utiles[0];
+
+  let mejor = utiles[0];
+  let mejorAciertos = -1;
+  for (const alternativa of utiles) {
+    let aciertos = 0;
+    for (const seg of parsearMultiplesProductos(alternativa)) {
+      const porNombre = seleccionarPorNombre(seg.palabras, productos);
+      if (porNombre.length > 0) { aciertos++; continue; }
+      if (seleccionarPorParecido(seg.palabras, productos).length > 0) aciertos++;
+    }
+    if (aciertos > mejorAciertos) { mejorAciertos = aciertos; mejor = alternativa; }
+  }
+  return mejor;
 }
 
 export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] {
