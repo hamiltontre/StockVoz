@@ -130,6 +130,9 @@ export function claveFonetica(palabra: string): string {
     .replace(/w/g, 'b')
     .replace(/h/g, '')            // muda
     .replace(/ñ/g, 'n')
+    // Casi ninguna palabra española termina en m, y el reconocedor confunde
+    // esa nasal final constantemente: "pan" llega como "pam".
+    .replace(/m$/, 'n')
     .replace(/C/g, 'ch');
   // Letras repetidas no cambian el sonido en español ("carro" ya pasó por rr)
   return p.replace(/(.)\1+/g, '$1');
@@ -458,6 +461,37 @@ export function elegirMejorHipotesis<T extends { nombre: string }>(
   return mejor;
 }
 
+/**
+ * ¿Este token es la fracción "media"?
+ *
+ * El singular siempre lo es. El PLURAL solo cuando le sigue una unidad:
+ * "medias libra de arroz" es media libra (el reconocedor le pega la ese),
+ * pero "dos medias" son calcetines, que en Nicaragua se llaman así.
+ */
+function esMedia(token: string, siguiente?: string): boolean {
+  if (token === 'media' || token === 'medio') return true;
+  if (token !== 'medias' && token !== 'medios') return false;
+  return !!siguiente && (esUnidad(siguiente) || siguiente === 'docena' || siguiente === 'docenas');
+}
+
+/**
+ * ¿Es una unidad de medida, aunque el reconocedor la haya escrito mal?
+ *
+ * "libra y media de azúcar" llega como "libre y media" y, sin esto, "libre"
+ * se pegaba al nombre del producto anterior y el azúcar quedaba en 0.5 en
+ * vez de 1.5. Se exige 5+ letras para la comparación flexible: las unidades
+ * cortas ("par", "caja") están a un error de distancia de demasiadas
+ * palabras reales.
+ */
+function esUnidad(token: string): boolean {
+  if (PALABRAS_UNIDAD.has(token)) return true;
+  if (token.length < 5) return false;
+  for (const u of PALABRAS_UNIDAD) {
+    if (u.length >= 5 && distanciaEdicion(token, u) === 1) return true;
+  }
+  return false;
+}
+
 export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] {
   const tokens = normalizarTexto(normalizarFracciones(transcripcion))
     .split(/\s+/).filter(Boolean);
@@ -492,9 +526,17 @@ export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] 
     // "medias" (plural) puede ser producto (calcetines en Nicaragua).
     // Casos: "media libra de arroz" → 0.5; "libra y media" → 1+0.5 = 1.5;
     //        "dos libras y media" → 2.5; "docena y media" → 1.5 docenas.
-    if (token === 'media' || token === 'medio') {
+    if (esMedia(token, siguiente)) {
       if (curWords.length === 0) {
-        pendingQty = (pendingQty ?? 0) + 0.5;
+        // La fracción SUMA solo en el patrón "... y media" ("libra y media"
+        // = 1.5, "dos libras y media" = 2.5). Sin la "y" abre una cantidad
+        // nueva.
+        //
+        // POR QUÉ IMPORTA: al dictar "tres coca cola trescientos cincuenta
+        // ml, media libra de tornillo", el "cincuenta" del envase quedaba
+        // suelto y la fracción se le sumaba: 50 + 0.5 = 50.5 TORNILLOS en
+        // vez de media libra. Eso es cobrarle de más al cliente.
+        pendingQty = tokens[idx - 1] === 'y' ? (pendingQty ?? 0) + 0.5 : 0.5;
       } else if (curQty == null) {
         // patrón sufijo poco común ("arroz media") → cantidad 0.5
         curQty = 0.5;
@@ -532,7 +574,7 @@ export function parsearMultiplesProductos(transcripcion: string): SegmentoVoz[] 
 
     // Unidades de medida: no son producto; sin cantidad previa implican 1
     // ("libra de arroz" = 1 libra, para que "y media" luego sume 1.5).
-    if (PALABRAS_UNIDAD.has(token)) {
+    if (esUnidad(token)) {
       if (curWords.length > 0 && curQty != null) {
         // Igual que con "media": el producto en curso ya tiene cantidad, así
         // que esta unidad abre uno nuevo ("2 clavos libra de arroz").

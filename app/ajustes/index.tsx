@@ -491,11 +491,16 @@ export default function PantallaAjustes() {
                   <Ionicons name="mic-outline" size={20} color={C.acento} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.filaLabel}>Precisión de la voz</Text>
+                  <Text style={s.filaLabel}>Cobertura de la voz</Text>
                   <Text style={s.filaSub}>
                     {resumenVoz && resumenVoz.total > 0
-                      ? `${resumenVoz.productosEncontrados}/${resumenVoz.productosBuscados} productos (${Math.round((resumenVoz.productosEncontrados / Math.max(1, resumenVoz.productosBuscados)) * 100)}%) · ${resumenVoz.total} comandos`
+                      ? `${resumenVoz.productosEncontrados}/${resumenVoz.productosBuscados} con coincidencia (${Math.round((resumenVoz.productosEncontrados / Math.max(1, resumenVoz.productosBuscados)) * 100)}%) · ${resumenVoz.total} comandos`
                       : 'Sin comandos registrados todavía'}
+                  </Text>
+                  {/* Se llama cobertura y no precisión a propósito: mide que
+                      se haya encontrado ALGO, no que sea lo correcto. */}
+                  <Text style={s.filaSub}>
+                    Enviá el detalle para revisar las cantidades
                   </Text>
                 </View>
               </View>

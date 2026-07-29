@@ -121,7 +121,13 @@ export const VozLogRepository = {
         ? Math.round((r.productosEncontrados / r.productosBuscados) * 100)
         : 0;
       lineas.push(`Comandos: ${r.total}  ·  sin fallos: ${r.perfectos}`);
-      lineas.push(`Productos: ${r.productosEncontrados}/${r.productosBuscados} encontrados (${pct}%)`);
+      lineas.push(`Productos: ${r.productosEncontrados}/${r.productosBuscados} con coincidencia (${pct}%)`);
+      // OJO con este número: mide que se haya encontrado ALGO, no que sea
+      // lo correcto. Un "50.5 × Tornillos" cuando se pidió media libra
+      // cuenta como acierto. Hay que leer el detalle, no solo el
+      // porcentaje — creerle al porcentaje ya nos escondió errores de
+      // cantidad que le cobraban de más al cliente.
+      lineas.push('(coincidencia ≠ acierto: revisar cantidades en el detalle)');
       lineas.push('');
     }
 

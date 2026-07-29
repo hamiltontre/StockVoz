@@ -134,6 +134,45 @@ console.log('\n5) Varias transcripciones propuestas');
     'una sola propuesta pasa igual');
 }
 
+// ── 5b. Fallos REALES vistos dictando en el teléfono ────────────────────
+// Cada uno salió del diagnóstico de voz de una prueba de campo. Van acá
+// para que no vuelvan: el patrón de "arreglar y romper otra cosa" es
+// justamente lo que estas pruebas existen para atrapar.
+console.log('\n5b) Fallos de campo (diagnóstico del teléfono)');
+{
+  const cant = (frase, i = 0) => P.parsearMultiplesProductos(frase)[i]?.cantidad;
+
+  // El "cincuenta" de "350 ml" se filtraba al producto siguiente y la
+  // fracción se le SUMABA: 50 + 0.5 = 50.5 tornillos en vez de media libra.
+  const fuga = P.parsearMultiplesProductos(
+    'tres coca cola trescientos cincuenta m media libra de tornillo'
+  );
+  check(fuga[1]?.cantidad === 0.5, 'número del envase no se filtra al siguiente',
+    `→ ${fuga[1]?.cantidad}`);
+
+  // "libra" llega como "libre" y el azúcar quedaba en 0.5 en vez de 1.5.
+  check(cant('media libra de arroz faisan libre y media de azucar', 1) === 1.5,
+    '"libre y media" se entiende como libra y media',
+    `→ ${cant('media libra de arroz faisan libre y media de azucar', 1)}`);
+
+  // El reconocedor le pega la ese: "medias libra" daba 1 en vez de 0.5.
+  check(cant('medias libra de arroz faisan') === 0.5, '"medias libra" = media libra',
+    `→ ${cant('medias libra de arroz faisan')}`);
+
+  // Nasal final: "pan" llega como "pam".
+  check(P.seleccionarPorParecido(['pam'], productos).length > 0 ||
+    P.claveFonetica('pam') === P.claveFonetica('pan'), '"pam" suena como "pan"');
+
+  // Y lo que NO debe romperse al aflojar todo lo anterior:
+  check(cant('libra y media de azucar') === 1.5, '"libra y media" sigue siendo 1.5');
+  check(cant('dos libras y media de carne molida') === 2.5, '"dos libras y media" = 2.5');
+  check(cant('docena y media de huevos') === 1.5, '"docena y media" = 1.5 docenas');
+  // "medias" sin unidad detrás son calcetines, no una fracción
+  const medias = P.parsearMultiplesProductos('dos medias')[0];
+  check(medias?.cantidad === 2 && medias?.palabras.includes('medias'),
+    '"dos medias" siguen siendo calcetines');
+}
+
 // ── 6. Varios productos en un solo dictado ──────────────────────────────
 console.log('\n6) Listas encadenadas');
 const lista = P.parsearMultiplesProductos('tres maruchan dos coca cola cinco pan simple');
