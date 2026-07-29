@@ -50,3 +50,6 @@ yarn-error.*
 # Play Store credentials
 play-store-credentials.json
 *-credentials.json
+
+# Artefactos temporales de pruebas
+tmp/
