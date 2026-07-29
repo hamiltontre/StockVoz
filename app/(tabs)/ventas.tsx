@@ -24,6 +24,7 @@ import { centavosACordobas, cordobasACentavos } from '../../src/utils/money';
 import {
   calcularSubtotalLinea,
   pasoCantidad,
+  formatearCantidad,
   formatearCantidadConUnidad,
   abreviaturaUnidad,
 } from '../../src/utils/cantidad';
@@ -31,6 +32,13 @@ import { ModalRecibo } from '../../src/components/ModalRecibo';
 import { ModalBuscarProducto } from '../../src/components/ModalBuscarProducto';
 import { COLORES as C } from '../../src/theme/colors';
 import type { ItemCarrito, MetodoPago, Producto, VentaConDetalle } from '../../src/types';
+
+/** Producto dictado que la voz no logró identificar. */
+interface Pendiente {
+  palabras: string[];
+  cantidad: number;
+  enDocenas: boolean;
+}
 
 export default function PantallaVentas() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
@@ -42,9 +50,10 @@ export default function PantallaVentas() {
   const [reciboVisible, setReciboVisible] = useState(false);
   const [ventaRecibo, setVentaRecibo] = useState<VentaConDetalle | null>(null);
   const [buscarVisible, setBuscarVisible] = useState(false);
-  // Frases que la voz no reconoció y que el vendedor va a asociar a un
-  // producto (null = el buscador funciona normal, agregando al carrito).
-  const [ensenando, setEnsenando] = useState<string[] | null>(null);
+  // Productos que la voz no reconoció. Quedan visibles en el carrito como
+  // tarjetas pendientes en vez de cortar la venta con una alerta.
+  const [pendientes, setPendientes] = useState<Pendiente[]>([]);
+  const [pendienteActivo, setPendienteActivo] = useState<Pendiente | null>(null);
 
   const { resumenHoy, registrarVenta, cargarRecientes } = useVentas();
   const { sesion } = useSesion();
@@ -84,71 +93,29 @@ export default function PantallaVentas() {
   // reconocidos al carrito de una sola pasada.
   useEffect(() => {
     if (!resultadoVoz) return;
-    const transcripcion = resultadoVoz.transcripcion;
-    const noEncontrados: string[] = [];
-    let agregados = 0;
+    const nuevosPendientes: Pendiente[] = [];
     for (const item of resultadoVoz.items) {
       if (item.productosEncontrados.length >= 1) {
-        // Si hay varias coincidencias, tomamos la más relevante (primera)
-        const producto = item.productosEncontrados[0];
-        // "media docena de clavos": si el stock del producto se cuenta por
-        // unidad, la docena hablada son 12 unidades (0.5 doc → 6). Si el
-        // producto ya se mide en docenas, la cantidad queda tal cual.
-        const cantidad = item.enDocenas && producto.unidad !== 'docena'
-          ? item.cantidad * 12
-          : item.cantidad;
-        agregarAlCarrito(producto, cantidad);
-        agregados++;
+        // Si hay varias coincidencias, tomamos la más relevante (primera).
+        // La cantidad ya viene convertida de docenas a unidades.
+        agregarAlCarrito(item.productosEncontrados[0], item.cantidad);
       } else {
-        noEncontrados.push(item.palabras.join(' '));
+        // NO se interrumpe la venta con una alerta: el producto no
+        // reconocido entra al carrito como tarjeta pendiente y el vendedor
+        // la resuelve en un toque cuando pueda. Con un cliente enfrente,
+        // un diálogo que bloquea es peor que el error mismo.
+        nuevosPendientes.push({
+          palabras: item.palabras,
+          cantidad: item.cantidad,
+          enDocenas: !!item.enDocenas,
+        });
       }
+    }
+    if (nuevosPendientes.length > 0) {
+      setPendientes((prev) => [...prev, ...nuevosPendientes]);
     }
     limpiar();
-    if (noEncontrados.length > 0) {
-      // Mostrar lo que REALMENTE se escuchó: marcas como "Faisán" salen
-      // transcritas de formas raras y el vendedor no tiene cómo saberlo.
-      // Con el texto a la vista puede enseñarle a la app de una vez.
-      Alert.alert(
-        agregados > 0 ? 'Algunos no se encontraron' : 'No encontré el producto',
-        `Escuché: «${transcripcion}»\n\n` +
-          `No tengo: ${noEncontrados.join(', ')}` +
-          (agregados > 0 ? `\n\nAgregué ${agregados} al carrito.` : ''),
-        [
-          { text: 'Cerrar', style: 'cancel' },
-          {
-            text: 'Enseñarle a StockVoz',
-            onPress: () => { setEnsenando(noEncontrados); setBuscarVisible(true); },
-          },
-        ]
-      );
-    }
   }, [resultadoVoz]);
-
-  /**
-   * Aprendizaje: lo que la app no entendió se guarda como palabra clave del
-   * producto que el vendedor señale. La próxima vez que Google transcriba
-   * igual, el producto aparece. Cada error se convierte en mejora.
-   */
-  const ensenarProducto = useCallback(async (producto: Producto) => {
-    const frases = ensenando ?? [];
-    setEnsenando(null);
-    let agregadas = 0;
-    for (const frase of frases) {
-      // La frase completa y cada palabra suelta: cubre tanto
-      // "arroz faisan" como "faisan" dicho solo.
-      const variantes = [frase, ...frase.split(/\s+/)].filter((v) => v.length >= 3);
-      for (const v of new Set(variantes)) {
-        const r = await ProductoRepository.agregarPalabraClave(producto.id, v);
-        if (r.ok) agregadas++;
-      }
-    }
-    Alert.alert(
-      '✓ Aprendido',
-      agregadas > 0
-        ? `La próxima vez que digas eso, StockVoz va a entender "${producto.nombre}".`
-        : 'No se pudo guardar. Intentá desde Inventario → 🎤 del producto.'
-    );
-  }, [ensenando]);
 
   const agregarAlCarrito = useCallback((producto: Producto, cantidad = 1) => {
     setCarrito((prev) => {
@@ -161,6 +128,24 @@ export default function PantallaVentas() {
       return [...prev, { producto, cantidad }];
     });
   }, []);
+
+  /** Resuelve una tarjeta pendiente: la agrega al carrito y lo aprende. */
+  const resolverPendiente = useCallback(async (producto: Producto) => {
+    const p = pendienteActivo;
+    setPendienteActivo(null);
+    if (!p) return;
+    const cantidad = p.enDocenas && producto.unidad !== 'docena'
+      ? p.cantidad * 12
+      : p.cantidad;
+    agregarAlCarrito(producto, cantidad);
+    setPendientes((prev) => prev.filter((x) => x !== p));
+    // Aprender para que la próxima vez entre solo
+    const frase = p.palabras.join(' ');
+    const variantes = [frase, ...p.palabras].filter((v) => v.length >= 3);
+    for (const v of new Set(variantes)) {
+      await ProductoRepository.agregarPalabraClave(producto.id, v);
+    }
+  }, [pendienteActivo, agregarAlCarrito]);
 
   const removerDelCarrito = useCallback((productoId: number) => {
     setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId));
@@ -316,6 +301,37 @@ export default function PantallaVentas() {
           <TouchableOpacity onPress={() => { detenerEscucha(); limpiar(); }} style={s.bannerBtnStop}>
             <Ionicons name="close-circle" size={20} color={C.subtexto} />
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Productos que la voz no reconoció: se resuelven en un toque sin
+          interrumpir la venta. */}
+      {pendientes.length > 0 && (
+        <View style={s.pendientesZona}>
+          {pendientes.map((p, i) => (
+            <TouchableOpacity
+              key={`${p.palabras.join('-')}-${i}`}
+              style={s.pendienteCard}
+              onPress={() => { setPendienteActivo(p); setBuscarVisible(true); }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="help-circle-outline" size={20} color={C.amarillo} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.pendienteTexto} numberOfLines={1}>
+                  ¿Cuál es «{p.palabras.join(' ')}»?
+                </Text>
+                <Text style={s.pendienteSub}>
+                  {formatearCantidad(p.cantidad)}{p.enDocenas ? ' docena(s)' : ''} · tocá para elegirlo
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setPendientes((prev) => prev.filter((x) => x !== p))}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close-circle" size={20} color={C.subtexto} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
 
@@ -475,11 +491,11 @@ export default function PantallaVentas() {
 
       <ModalBuscarProducto
         visible={buscarVisible}
-        titulo={ensenando ? '¿Cuál era el producto?' : undefined}
-        parecidoA={ensenando ?? undefined}
-        onCerrar={() => { setBuscarVisible(false); setEnsenando(null); }}
+        titulo={pendienteActivo ? `¿Cuál es «${pendienteActivo.palabras.join(' ')}»?` : undefined}
+        parecidoA={pendienteActivo?.palabras}
+        onCerrar={() => { setBuscarVisible(false); setPendienteActivo(null); }}
         onSeleccionar={(p) => {
-          if (ensenando) ensenarProducto(p);
+          if (pendienteActivo) resolverPendiente(p);
           else agregarAlCarrito(p, 1);
         }}
       />
@@ -578,6 +594,14 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.borde,
   },
+  pendientesZona: { paddingHorizontal: 20, gap: 8, marginBottom: 8 },
+  pendienteCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: C.amarilloClaro, borderRadius: 12, padding: 12,
+    borderWidth: 1.5, borderColor: C.amarillo,
+  },
+  pendienteTexto: { fontSize: 14, fontWeight: '700', color: C.texto },
+  pendienteSub: { fontSize: 11, color: C.subtexto, marginTop: 1 },
   itemCarritoExcede: { borderColor: C.rojo, borderWidth: 1.5, backgroundColor: C.rojoClaro },
   avisoStock: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   avisoStockTexto: { fontSize: 12, color: C.rojo, fontWeight: '700' },

@@ -249,8 +249,16 @@ export function useVoz() {
       const items: ItemVoz[] = [];
       for (const seg of segmentos) {
         const productosEncontrados = await buscarProductosInteligente(seg.palabras, catalogo);
+        // La conversión docena→unidades se hace ACÁ, donde ya se conoce el
+        // producto: "media docena de esponjas" son 6 esponjas. Antes se
+        // hacía en la pantalla y el diagnóstico registraba el 0.5 sin
+        // convertir, lo que hacía creer que la app confundía las docenas.
+        const p = productosEncontrados[0];
+        const cantidad = seg.enDocenas && p && p.unidad !== 'docena'
+          ? seg.cantidad * 12
+          : seg.cantidad;
         items.push({
-          cantidad: seg.cantidad,
+          cantidad,
           palabras: seg.palabras,
           productosEncontrados,
           enDocenas: seg.enDocenas,
