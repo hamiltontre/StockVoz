@@ -358,7 +358,7 @@ export const ProductoRepository = {
          WHERE activo = 1
            AND fecha_vencimiento IS NOT NULL
            AND julianday(fecha_vencimiento) - julianday('now') <= ?
-           AND date(fecha_vencimiento) >= date('now')
+           AND date(fecha_vencimiento) >= date('now','localtime')
          ORDER BY fecha_vencimiento ASC`,
         [diasAnticipacion]
       );
@@ -382,7 +382,7 @@ export const ProductoRepository = {
         `SELECT * FROM productos
          WHERE activo = 1
            AND fecha_vencimiento IS NOT NULL
-           AND date(fecha_vencimiento) < date('now')
+           AND date(fecha_vencimiento) < date('now','localtime')
          ORDER BY fecha_vencimiento ASC`
       );
       return { ok: true, data: rows.map(rowToProducto) };
@@ -420,7 +420,7 @@ export const ProductoRepository = {
              INNER JOIN ventas v ON v.id = dv.venta_id
              WHERE dv.producto_id = p.id
                AND v.estado = 'completada'
-               AND v.creado_en >= datetime('now', ?)
+               AND date(v.creado_en,'localtime') >= date('now','localtime',?)
            ), 0) AS vendido_ventana,
            (
              SELECT CAST(julianday('now') - julianday(MIN(v.creado_en)) AS INTEGER)
@@ -472,7 +472,7 @@ export const ProductoRepository = {
          INNER JOIN ventas v ON v.id = dv.venta_id
          LEFT  JOIN productos p ON p.id = dv.producto_id
          WHERE v.estado = 'completada'
-           AND date(v.creado_en) >= date('now', ?)`,
+           AND date(v.creado_en,'localtime') >= date('now','localtime',?)`,
         [`-${dias} days`]
       );
       return { ok: true, data: row ?? { ganancia_total: 0, margen_promedio: 0, productos_sin_costo: 0 } };

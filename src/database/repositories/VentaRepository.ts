@@ -340,7 +340,7 @@ export const VentaRepository = {
            COALESCE(SUM(CASE WHEN es_fiado = 1 AND fiado_pagado_en IS NULL THEN total ELSE 0 END),0) as total_fiado
          FROM ventas
          WHERE estado = 'completada'
-           AND date(creado_en) = date('now')`
+           AND date(creado_en,'localtime') = date('now','localtime')`
       );
       return { ok: true, data: row! };
     } catch (e) {
@@ -366,7 +366,7 @@ export const VentaRepository = {
            COALESCE(AVG(CASE WHEN estado='completada' THEN total END),0) as promedio_venta,
            SUM(CASE WHEN estado='anulada' THEN 1 ELSE 0 END) as total_anuladas
          FROM ventas
-         WHERE date(creado_en) >= date('now', ?)`,
+         WHERE date(creado_en,'localtime') >= date('now','localtime',?)`,
         [`-${dias} days`]
       );
       return { ok: true, data: row! };
@@ -384,13 +384,13 @@ export const VentaRepository = {
         fecha: string; total_ventas: number; total_monto: number;
       }>(
         `SELECT
-           date(creado_en) as fecha,
+           date(creado_en,'localtime') as fecha,
            COUNT(*) as total_ventas,
            COALESCE(SUM(total),0) as total_monto
          FROM ventas
          WHERE estado = 'completada'
-           AND date(creado_en) >= date('now', ?)
-         GROUP BY date(creado_en)
+           AND date(creado_en,'localtime') >= date('now','localtime',?)
+         GROUP BY date(creado_en,'localtime')
          ORDER BY fecha DESC`,
         [`-${dias} days`]
       );
@@ -442,7 +442,7 @@ export const VentaRepository = {
            COALESCE(SUM(total),0) as total_monto
          FROM ventas
          WHERE estado = 'completada'
-           AND date(creado_en) >= date('now', '-30 days')
+           AND date(creado_en,'localtime') >= date('now','localtime','-30 days')
          GROUP BY CASE WHEN es_fiado = 1 THEN 'fiado' ELSE metodo_pago END
          ORDER BY total_monto DESC`
       );
