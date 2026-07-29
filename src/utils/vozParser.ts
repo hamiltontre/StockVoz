@@ -182,6 +182,44 @@ export function seleccionarPorNombre<T extends { nombre: string }>(
 }
 
 /**
+ * Ordena un catálogo por parecido a lo que se dijo, del más al menos
+ * probable. NO decide nada: se usa para poner los candidatos arriba cuando
+ * el vendedor le va a enseñar a la app qué producto era.
+ *
+ * Aquí sí conviene ser generoso —el humano elige— al revés que en la
+ * búsqueda automática, donde adivinar mal cobra el producto equivocado.
+ */
+export function ordenarPorParecido<T extends { nombre: string }>(
+  palabras: string[],
+  productos: T[]
+): T[] {
+  if (palabras.length === 0) return productos;
+  const puntuar = (nombre: string): number => {
+    const tokens = nucleoNombre(nombre).split(' ').filter(Boolean);
+    if (tokens.length === 0) return Infinity;
+    // Suma de la mejor distancia de cada palabra dicha al nombre
+    let total = 0;
+    for (const dicha of palabras) {
+      let mejor = Infinity;
+      for (const t of tokens) {
+        const d = distanciaEdicion(dicha, t);
+        // El prefijo compartido descuenta a la MITAD, no a un valor fijo:
+        // así "pantalones" queda más cerca de "pantalón" (casi igual) que
+        // de "pan" (prefijo corto). Con un bonus plano ganaba "Pan simple".
+        const esPrefijo = t.startsWith(dicha) || dicha.startsWith(t);
+        mejor = Math.min(mejor, esPrefijo ? d / 2 : d);
+      }
+      total += mejor === Infinity ? 99 : mejor;
+    }
+    return total;
+  };
+  return productos
+    .map((p) => ({ p, d: puntuar(p.nombre) }))
+    .sort((a, b) => a.d - b.d)
+    .map((x) => x.p);
+}
+
+/**
  * ÚLTIMO RECURSO: encontrar el producto pese a errores de transcripción.
  *
  * Solo se llama cuando fallaron el nombre exacto y las palabras clave, así

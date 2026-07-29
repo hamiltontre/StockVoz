@@ -173,6 +173,22 @@ export const PRODUCTOS_DEMO: ProductoDemo[] = [
   P('Cinturón', 180, 130, 15, 'unidad', { minimo: 3, claves: ['cinturon', 'faja'] }),
 ];
 
+/**
+ * Repone el stock de TODOS los productos activos a una cantidad fija.
+ * Para probar sin quedarse sin existencias a mitad de una prueba larga.
+ * No toca precios, palabras clave ni el historial de ventas.
+ */
+export async function reponerStock(cantidad = 30): Promise<number> {
+  const db = await getDb();
+  const r = await db.runAsync(
+    `UPDATE productos
+     SET stock = ?, actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE activo = 1`,
+    [cantidad]
+  );
+  return r.changes;
+}
+
 export interface ResultadoSeed {
   creados: number;
   omitidos: number;

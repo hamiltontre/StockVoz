@@ -8,6 +8,7 @@ import { ProductoRepository } from '../database/repositories/ProductoRepository'
 import { COLORES as C } from '../theme/colors';
 import { centavosACordobas } from '../utils/money';
 import { formatearCantidadConUnidad } from '../utils/cantidad';
+import { ordenarPorParecido } from '../utils/vozParser';
 import type { Producto } from '../types';
 
 interface Props {
@@ -18,6 +19,12 @@ interface Props {
    * vendiendo sino asociando una palabra que la voz no entendió.
    */
   titulo?: string;
+  /**
+   * Palabras que la voz no entendió. Si vienen, la lista se ordena por
+   * parecido a ellas: el producto correcto queda arriba y enseñarle a la
+   * app toma un toque en vez de buscar entre 100 productos.
+   */
+  parecidoA?: string[];
   onCerrar: () => void;
   onSeleccionar: (producto: Producto) => void;
 }
@@ -26,7 +33,7 @@ interface Props {
  * Búsqueda manual de productos para agregar al carrito sin voz.
  * Útil cuando el ambiente es muy ruidoso o la voz no está disponible.
  */
-export function ModalBuscarProducto({ visible, titulo, onCerrar, onSeleccionar }: Props) {
+export function ModalBuscarProducto({ visible, titulo, parecidoA, onCerrar, onSeleccionar }: Props) {
   const [busqueda, setBusqueda] = useState('');
   const [productos, setProductos] = useState<Producto[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -36,7 +43,9 @@ export function ModalBuscarProducto({ visible, titulo, onCerrar, onSeleccionar }
     const result = termino.trim()
       ? await ProductoRepository.buscarPorNombre(termino)
       : await ProductoRepository.obtenerTodos();
-    if (result.ok) setProductos(result.data);
+    if (result.ok) {
+      setProductos(parecidoA?.length ? ordenarPorParecido(parecidoA, result.data) : result.data);
+    }
     setCargando(false);
   }, []);
 

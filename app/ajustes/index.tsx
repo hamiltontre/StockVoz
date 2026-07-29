@@ -14,7 +14,7 @@ import { UsuarioRepository } from '../../src/database/repositories/UsuarioReposi
 import { ApiCliente } from '../../src/services/apiCliente';
 import { ConfigRepository, CLAVES } from '../../src/database/repositories/ConfigRepository';
 import { useRespaldo } from '../../src/hooks/useRespaldo';
-import { cargarProductosDemo } from '../../src/database/seedDemo';
+import { cargarProductosDemo, reponerStock } from '../../src/database/seedDemo';
 import { VozLogRepository, type ResumenVoz } from '../../src/database/repositories/VozLogRepository';
 import type { Negocio } from '../../src/types';
 
@@ -47,7 +47,7 @@ export default function PantallaAjustes() {
   const cargarDemo = useCallback(() => {
     Alert.alert(
       'Cargar productos de ejemplo',
-      'Se agregarán ~38 productos de prueba con sus palabras clave.\n\nNo se borra ni se duplica nada de lo que ya tenés.',
+      'Se agregarán ~104 productos de prueba con sus palabras clave.\n\nNo se borra ni se duplica nada de lo que ya tenés.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -63,6 +63,23 @@ export default function PantallaAjustes() {
                 `\n${r.claves} palabras clave` +
                 (r.errores.length ? `\n\nErrores: ${r.errores.slice(0, 3).join('; ')}` : '')
             );
+          },
+        },
+      ]
+    );
+  }, []);
+
+  const reponer = useCallback(() => {
+    Alert.alert(
+      'Reponer stock',
+      'Pondrá 30 unidades en TODOS los productos activos.\n\nNo afecta precios ni el historial de ventas.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Reponer a 30',
+          onPress: async () => {
+            const n = await reponerStock(30);
+            Alert.alert('Listo', `${n} productos con 30 de stock.`);
           },
         },
       ]
@@ -456,9 +473,18 @@ export default function PantallaAjustes() {
                 )}
               </TouchableOpacity>
               <Text style={s.notaChica}>
-                Agrega ~38 productos de pulpería, farmacia, ferretería y ropa
+                Agrega ~104 productos de pulpería, farmacia, ferretería y ropa
                 con sus palabras clave. No borra ni duplica lo que ya tenés.
               </Text>
+
+              <TouchableOpacity
+                style={s.btnSecundarioAncho}
+                onPress={reponer}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="refresh-outline" size={18} color={C.acento} />
+                <Text style={s.btnSecundarioAnchoTexto}>Reponer stock a 30</Text>
+              </TouchableOpacity>
 
               <View style={s.fila}>
                 <View style={s.filaIcono}>

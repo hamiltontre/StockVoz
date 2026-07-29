@@ -476,6 +476,7 @@ export default function PantallaVentas() {
       <ModalBuscarProducto
         visible={buscarVisible}
         titulo={ensenando ? '¿Cuál era el producto?' : undefined}
+        parecidoA={ensenando ?? undefined}
         onCerrar={() => { setBuscarVisible(false); setEnsenando(null); }}
         onSeleccionar={(p) => {
           if (ensenando) ensenarProducto(p);
