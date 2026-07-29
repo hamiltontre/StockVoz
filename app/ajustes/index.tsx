@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Alert, ScrollView, ActivityIndicator, Share,
+  Alert, ScrollView, ActivityIndicator, Share, NativeModules,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -89,6 +89,31 @@ export default function PantallaAjustes() {
   const compartirDiagnostico = useCallback(async () => {
     const texto = await VozLogRepository.generarReporte();
     try { await Share.share({ message: texto }); } catch { /* canceló */ }
+  }, []);
+
+  /**
+   * Guarda el diagnóstico como archivo en el teléfono.
+   *
+   * POR QUÉ ADEMÁS DE "Enviar": compartir obliga a mandarle los datos del
+   * negocio a un contacto de WhatsApp o al correo solo para poder leerlos.
+   * Con el archivo se abre desde cualquier explorador y se adjunta donde
+   * sea, sin publicar nada.
+   */
+  const guardarDiagnostico = useCallback(async () => {
+    const texto = await VozLogRepository.generarReporte();
+    const Archivo = NativeModules.ArchivoStockVoz as
+      | { guardarTexto: (n: string, t: string) => Promise<string> }
+      | undefined;
+    if (!Archivo) {
+      Alert.alert('No disponible', 'Esta versión de la app no puede guardar archivos.');
+      return;
+    }
+    try {
+      const ruta = await Archivo.guardarTexto('diagnostico-voz.txt', texto);
+      Alert.alert('Diagnóstico guardado', `Se guardó en:\n${ruta}`);
+    } catch (e) {
+      Alert.alert('No se pudo guardar', String(e));
+    }
   }, []);
 
   const limpiarDiagnostico = useCallback(() => {
@@ -513,6 +538,14 @@ export default function PantallaAjustes() {
                 >
                   <Ionicons name="share-outline" size={16} color={C.acento} />
                   <Text style={s.btnSecundarioAnchoTexto}>Enviar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.btnSecundarioAncho, { flex: 1 }]}
+                  onPress={guardarDiagnostico}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="save-outline" size={16} color={C.acento} />
+                  <Text style={s.btnSecundarioAnchoTexto}>Guardar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.btnSecundarioAncho, { flex: 1 }]}

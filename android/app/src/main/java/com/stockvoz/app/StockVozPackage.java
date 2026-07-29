@@ -16,6 +16,7 @@ public class StockVozPackage implements ReactPackage {
   public List<NativeModule> createNativeModules(ReactApplicationContext contexto) {
     List<NativeModule> modulos = new ArrayList<>();
     modulos.add(new SilenciadorAudioModule(contexto));
+    modulos.add(new ArchivoModule(contexto));
     return modulos;
   }
 
