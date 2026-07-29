@@ -326,12 +326,36 @@ export function seleccionarPorParecido<T extends { nombre: string }>(
     .filter((x) => x.aciertos === palabras.length) // todas las palabras dichas
     .sort((a, b) => a.distanciaTotal - b.distanciaTotal);
 
-  if (puntuados.length === 0) return [];
-  // Empate en el mejor puntaje → ambiguo, mejor no adivinar
-  if (puntuados.length > 1 && puntuados[0].distanciaTotal === puntuados[1].distanciaTotal) {
-    return [];
+  if (puntuados.length > 0) {
+    // Empate en el mejor puntaje → ambiguo, mejor no adivinar
+    if (puntuados.length > 1 && puntuados[0].distanciaTotal === puntuados[1].distanciaTotal) {
+      return [];
+    }
+    return [puntuados[0].p];
   }
-  return [puntuados[0].p];
+
+  // Segundo intento: basta UNA palabra, si es EXCLUSIVA de un producto.
+  //
+  // POR QUÉ: exigir que TODAS las palabras coincidan se cae con un solo
+  // error del reconocedor. "champú Sedal" llega como "champu sedal" y se
+  // perdía entero, aunque "sedal" no exista en ningún otro producto del
+  // inventario. Ahí no hay nada que adivinar.
+  //
+  // Se mantiene estricto a propósito, porque meter el producto EQUIVOCADO
+  // al carrito es peor que no encontrarlo (sin match el vendedor lo resuelve
+  // en un toque; con match errado le cobra mal al cliente):
+  //   - la palabra debe apuntar a UN solo producto, no a varios
+  //   - debe tener 4+ letras, para que "sal" o "pan" no arrastren nada
+  //   - si dos palabras señalan productos distintos, se descarta
+  const exclusivos = new Set<T>();
+  for (const dicha of palabras) {
+    if (dicha.length < 4) continue;
+    const coinciden = productos.filter((p) =>
+      nucleoNombre(p.nombre).split(' ').some((t) => t && palabraSimilar(dicha, t))
+    );
+    if (coinciden.length === 1) exclusivos.add(coinciden[0]);
+  }
+  return exclusivos.size === 1 ? [...exclusivos] : [];
 }
 
 /**

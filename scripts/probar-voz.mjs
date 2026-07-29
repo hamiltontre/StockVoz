@@ -65,6 +65,24 @@ for (const [dicho, esperado] of foneticos) {
   check(r[0]?.nombre === esperado, `"${dicho}"`, `→ ${r[0]?.nombre ?? '(nada)'}`);
 }
 
+// ── 2b. Una palabra exclusiva alcanza, aunque la otra llegue mal ────────
+console.log('\n2b) Palabra exclusiva cuando el reconocedor arruina la otra');
+{
+  // "sedal" no existe en ningún otro producto: no hay nada que adivinar.
+  const r = P.seleccionarPorParecido(['champu', 'sedal'], productos);
+  check(r[0]?.nombre === 'Shampoo Sedal', '"champu sedal"', `→ ${r[0]?.nombre ?? '(nada)'}`);
+  // Pero si dos palabras señalan productos DISTINTOS, no se adivina:
+  // "crema" es un producto y "colgate" es otro.
+  const amb = P.seleccionarPorParecido(['crema', 'dental', 'colgate'], productos);
+  check(amb.length === 0, 'dos palabras que apuntan a productos distintos', '→ no adivina');
+  // Palabras de 3 letras no arrastran productos
+  check(P.seleccionarPorParecido(['xyz', 'sal'], productos).length === 0,
+    '"sal" (3 letras) no arrastra producto');
+  // Basura sigue sin encontrar nada
+  check(P.seleccionarPorParecido(['cosas', 'raras'], productos).length === 0,
+    'palabras inventadas no encuentran nada');
+}
+
 // ── 3. No debe volverse tan flexible que confunda productos ─────────────
 console.log('\n3) Seguridad: que no confunda productos');
 const claveNombre = (n) =>
