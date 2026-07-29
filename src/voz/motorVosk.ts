@@ -6,16 +6,35 @@ import type { Producto } from '../types';
  * Motor Vosk: reconocimiento 100% dentro del teléfono, sin Google ni
  * internet.
  *
- * POR QUÉ IMPORTA MÁS QUE SER OFFLINE: acepta un VOCABULARIO RESTRINGIDO.
- * Se le pasa la lista de productos del negocio y solo reconoce esas
- * palabras, así que "Arroz Faisán" o "Xedex" —que Google convierte en
- * "ropa y sam" o "cedex" porque no las conoce— se transcriben bien desde
- * el primer intento. Es lo que el dueño esperaba desde el principio: que
- * el reconocedor conozca SU inventario.
+ * DOS MODOS, y la diferencia importa mucho en un punto de venta:
  *
- * A cambio, fuera de ese vocabulario no entiende nada. Por eso el
- * vocabulario incluye también números, fracciones y unidades (PALABRAS_BASE).
+ * - 'libre': Vosk usa su modelo de lenguaje completo y escribe lo que oye,
+ *   igual que Google. No conoce "Xedex" ni "Tortrix" —ningún reconocedor de
+ *   este tipo puede escribir una palabra que no esté en su léxico— pero
+ *   escribe algo parecido y SIEMPRE lo mismo, porque es determinista. Con
+ *   la búsqueda por parecido y "enseñar a la voz", enseñarle una vez lo deja
+ *   resuelto para siempre.
+ *
+ * - 'gramatica': solo puede devolver palabras del inventario. Suena mejor,
+ *   pero tiene un riesgo grave: si el vendedor dice una marca que no está en
+ *   la gramática, Vosk devuelve la palabra del inventario que más se le
+ *   parezca — un PRODUCTO EQUIVOCADO en el carrito, sin aviso. Se mitiga con
+ *   '[unk]', y entonces lo dicho simplemente se pierde.
+ *
+ * Se comprobó en el teléfono que el léxico del modelo español pequeño no
+ * contiene ~17 de las marcas del inventario de prueba, así que el modo
+ * cerrado no cumple lo que prometía. Por eso el valor por defecto es
+ * 'libre'. Cambiar MODO_POR_DEFECTO y comparar con el diagnóstico por
+ * motor, que registra cada modo por separado.
  */
+
+export type ModoVosk = 'libre' | 'gramatica';
+
+/**
+ * Modo con el que se crea el motor offline. Se deja a la vista para poder
+ * medir los dos contra el mismo inventario real.
+ */
+export const MODO_POR_DEFECTO: ModoVosk = 'libre';
 
 /** Nombre de la carpeta del modelo dentro de los assets nativos. */
 const RUTA_MODELO = 'vosk-model-small-es-0.42';
@@ -51,7 +70,8 @@ function getVosk() {
 }
 
 export class MotorVosk implements MotorVoz {
-  readonly nombre = 'vosk';
+  /** Distingue los modos en el diagnóstico: "vosk-libre" vs "vosk-gramatica". */
+  readonly nombre: string;
   readonly requiereInternet = false;
   // Vosk no se corta por silencio: escucha hasta que se le pida parar y va
   // entregando una frase reconocida a la vez.
@@ -63,6 +83,10 @@ export class MotorVosk implements MotorVoz {
   private subs: EventSubscription[] = [];
   /** Última frase entregada, para no contar dos veces la del cierre. */
   private ultimoFinal = '';
+
+  constructor(private readonly modo: ModoVosk = MODO_POR_DEFECTO) {
+    this.nombre = `vosk-${modo}`;
+  }
 
   estaDisponible(): boolean {
     return getVosk() !== null;
@@ -88,8 +112,11 @@ export class MotorVosk implements MotorVoz {
    * Arma la gramática con lo que el vendedor puede decir: cada palabra de
    * los nombres de producto, sus palabras clave, y los números/unidades.
    * Vosk trabaja con palabras sueltas, así que los nombres se separan.
+   *
+   * En modo 'libre' no se usa: el reconocedor escribe con todo su léxico.
    */
   async prepararVocabulario(productos: Producto[], palabrasClave: string[] = []): Promise<void> {
+    if (this.modo === 'libre') return;
     const palabras = new Set<string>(PALABRAS_BASE);
     const agregar = (frase: string) => {
       for (const t of normalizarParaGramatica(frase)) palabras.add(t);
@@ -142,6 +169,14 @@ export class MotorVosk implements MotorVoz {
         eventos.onError(String(e), true);
       })
     );
+
+    if (this.modo === 'libre') {
+      // Sin `grammar`, el nativo usa Recognizer(model, sampleRate): el
+      // modelo de lenguaje completo. Escribe lo que oye, y de ahí en
+      // adelante trabajan la búsqueda por parecido y las palabras enseñadas.
+      await vosk.start();
+      return;
+    }
 
     // "[unk]" permite que Vosk marque como desconocido lo que no está en el
     // vocabulario, en vez de forzar la palabra más parecida (que produciría

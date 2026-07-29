@@ -11,10 +11,14 @@ import type { MotorVoz } from './motor';
  *   el paquete offline de Google falla en varios equipos (visto en el
  *   Infinix de pruebas) y la transcripción se degrada mucho.
  *
- * - CON internet → Google. Para habla libre transcribe mejor y no depende
- *   de que el producto esté en el vocabulario, así que atrapa cosas que el
- *   vocabulario cerrado de Vosk no cubre (un producto recién creado, una
- *   marca que el dueño todavía no registró).
+ * - CON internet → Google. Su léxico es mucho más grande y se actualiza del
+ *   lado del servidor, así que escribe marcas y palabras nuevas que el
+ *   modelo pequeño de Vosk (39 MB, dentro del teléfono) no trae.
+ *
+ * NINGUNO de los dos "aprende" marcas: un reconocedor solo puede escribir
+ * palabras de su léxico. Lo que hace que "Xedex" o "Tortrix" terminen en el
+ * carrito no es el motor, sino la búsqueda por parecido y las palabras que
+ * el dueño le enseña — y eso funciona igual con los dos.
  *
  * Si el preferido no está disponible se usa el otro: la venta nunca se
  * queda sin voz por culpa de un motor.
